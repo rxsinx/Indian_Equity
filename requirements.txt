@@ -1,7 +1,12 @@
-streamlit==1.28.0
-yfinance==0.2.28
-pandas==2.0.3
-numpy==1.24.3
-plotly==5.17.0
-ta==0.10.2
-scipy==1.10.1
+# Core Application
+streamlit>=1.28.0
+yfinance>=0.2.28
+pandas>=2.0.0
+numpy>=1.24.0
+plotly>=5.17.0
+
+# Technical Analysis (Pure Python - NO system dependencies)
+ta>=0.10.0
+
+# Optional but useful for advanced calculations
+scipy>=1.10.0
