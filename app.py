@@ -11,11 +11,15 @@ from ta.momentum import RSIIndicator, StochasticOscillator
 from ta.volatility import BollingerBands, AverageTrueRange
 from ta.volume import OnBalanceVolumeIndicator
 import warnings
+from functools import lru_cache
+import io
+from scipy import stats
+
 warnings.filterwarnings('ignore')
 
 # Page configuration
 st.set_page_config(
-    page_title="Indian Equity Market Analyzer",
+    page_title="Indian Equity Market Analyzer Pro",
     page_icon="📈",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -43,48 +47,147 @@ st.markdown("""
         padding: 20px;
         border-radius: 10px;
         margin: 10px 0;
+        border-left: 5px solid #1f77b4;
     }
     .bullish {
-        color: #00ff00;
+        color: #00aa00;
         font-weight: bold;
+        background-color: #e8f5e8;
+        padding: 5px 10px;
+        border-radius: 5px;
     }
     .bearish {
-        color: #ff0000;
+        color: #ff4444;
         font-weight: bold;
+        background-color: #ffe8e8;
+        padding: 5px 10px;
+        border-radius: 5px;
     }
     .neutral {
-        color: #ffa500;
+        color: #ff9900;
         font-weight: bold;
+        background-color: #fff4e8;
+        padding: 5px 10px;
+        border-radius: 5px;
+    }
+    .pattern-card {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 15px;
+        border-radius: 10px;
+        margin: 10px 0;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+    .risk-card {
+        background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        color: white;
+        padding: 15px;
+        border-radius: 10px;
+        margin: 10px 0;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+    .success-card {
+        background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+        color: white;
+        padding: 15px;
+        border-radius: 10px;
+        margin: 10px 0;
+    }
+    .warning-card {
+        background: linear-gradient(135deg, #f46b45 0%, #eea849 100%);
+        color: white;
+        padding: 15px;
+        border-radius: 10px;
+        margin: 10px 0;
+    }
+    
+    @media (max-width: 768px) {
+        .main-header {
+            font-size: 28px !important;
+        }
+        .sub-header {
+            font-size: 20px !important;
+        }
+        .stMetric {
+            font-size: 14px !important;
+        }
+    }
+    
+    .stDataFrame {
+        font-size: 14px !important;
+    }
+    
+    .stPlotlyChart {
+        border-radius: 10px;
+        border: 1px solid #e6e6e6;
+    }
+    
+    .stock-ticker {
+        font-size: 28px;
+        font-weight: bold;
+        color: #1a237e;
+        padding: 10px;
+        background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+        border-radius: 10px;
+        text-align: center;
     }
     </style>
 """, unsafe_allow_html=True)
 
 class IndianEquityAnalyzer:
-    """Master Trader Grade Analysis for Indian Equity Market"""
+    """Master Trader Grade Analysis for Indian Equity Market - Enhanced Version"""
     
     def __init__(self, symbol, period='1y'):
         """Initialize with NSE/BSE symbol"""
-        self.symbol = symbol
+        self.symbol = self.validate_stock_symbol(symbol)
         self.period = period
         self.data = None
         self.ticker = None
         
-    def fetch_data(self):
+    def validate_stock_symbol(self, symbol):
+        """Validate and format stock symbol"""
+        valid_formats = ['.NS', '.BO']
+        
+        # Check if symbol has valid suffix
+        if any(symbol.upper().endswith(suffix) for suffix in valid_formats):
+            return symbol.upper()
+        
+        # Common Indian stocks for validation
+        common_indian_stocks = [
+            'RELIANCE', 'TCS', 'HDFCBANK', 'INFY', 'HINDUNILVR',
+            'ICICIBANK', 'ITC', 'SBIN', 'BHARTIARTL', 'KOTAKBANK',
+            'LT', 'AXISBANK', 'BAJFINANCE', 'WIPRO', 'HCLTECH',
+            'ASIANPAINT', 'MARUTI', 'SUNPHARMA', 'ULTRACEMCO', 'TITAN',
+            'ONGC', 'NTPC', 'POWERGRID', 'M&M', 'TATASTEEL'
+        ]
+        
+        # Add .NS suffix for common Indian stocks
+        if symbol.upper() in common_indian_stocks:
+            return f"{symbol.upper()}.NS"
+        
+        return f"{symbol.upper()}.NS"  # Default to NSE
+    
+    @st.cache_data(ttl=3600, show_spinner="Fetching market data...")
+    def fetch_data(_self, symbol, period):
+        """Fetch and cache stock data"""
+        analyzer = IndianEquityAnalyzer(symbol, period)
+        success = analyzer._fetch_raw_data()
+        return analyzer if success else None
+    
+    def _fetch_raw_data(self):
         """Fetch data from Yahoo Finance for Indian stocks"""
         try:
-            # For NSE stocks, append .NS
-            if not self.symbol.endswith('.NS') and not self.symbol.endswith('.BO'):
-                ticker_symbol = f"{self.symbol}.NS"
-            else:
-                ticker_symbol = self.symbol
-                
-            self.ticker = yf.Ticker(ticker_symbol)
+            self.ticker = yf.Ticker(self.symbol)
             self.data = self.ticker.history(period=self.period)
             
             if self.data.empty:
-                # Try BSE if NSE fails
-                ticker_symbol = f"{self.symbol.replace('.NS', '')}.BO"
-                self.ticker = yf.Ticker(ticker_symbol)
+                # Try alternative suffix
+                if self.symbol.endswith('.NS'):
+                    alt_symbol = self.symbol.replace('.NS', '.BO')
+                else:
+                    alt_symbol = self.symbol.replace('.BO', '.NS')
+                
+                self.ticker = yf.Ticker(alt_symbol)
                 self.data = self.ticker.history(period=self.period)
             
             if not self.data.empty:
@@ -97,66 +200,104 @@ class IndianEquityAnalyzer:
     
     def calculate_indicators(self):
         """Calculate all technical indicators"""
-        df = self.data
+        df = self.data.copy()
         
         # Moving Averages
+        df['SMA_9'] = SMAIndicator(df['Close'], window=9).sma_indicator()
         df['SMA_20'] = SMAIndicator(df['Close'], window=20).sma_indicator()
         df['SMA_50'] = SMAIndicator(df['Close'], window=50).sma_indicator()
+        df['SMA_100'] = SMAIndicator(df['Close'], window=100).sma_indicator()
         df['SMA_200'] = SMAIndicator(df['Close'], window=200).sma_indicator()
-        df['EMA_10'] = EMAIndicator(df['Close'], window=10).ema_indicator()
-        df['EMA_20'] = EMAIndicator(df['Close'], window=20).ema_indicator()
         
-        # MACD
-        macd = MACD(df['Close'])
-        df['MACD'] = macd.macd()
-        df['MACD_Signal'] = macd.macd_signal()
-        df['MACD_Hist'] = macd.macd_diff()
+        df['EMA_8'] = EMAIndicator(df['Close'], window=8).ema_indicator()
+        df['EMA_13'] = EMAIndicator(df['Close'], window=13).ema_indicator()
+        df['EMA_21'] = EMAIndicator(df['Close'], window=21).ema_indicator()
+        df['EMA_34'] = EMAIndicator(df['Close'], window=34).ema_indicator()
+        df['EMA_55'] = EMAIndicator(df['Close'], window=55).ema_indicator()
         
-        # RSI
-        df['RSI'] = RSIIndicator(df['Close']).rsi()
+        # MACD with multiple configurations
+        macd_fast = MACD(df['Close'], window_fast=12, window_slow=26, window_sign=9)
+        df['MACD'] = macd_fast.macd()
+        df['MACD_Signal'] = macd_fast.macd_signal()
+        df['MACD_Hist'] = macd_fast.macd_diff()
         
-        # Bollinger Bands
-        bb = BollingerBands(df['Close'])
-        df['BB_High'] = bb.bollinger_hband()
-        df['BB_Mid'] = bb.bollinger_mavg()
-        df['BB_Low'] = bb.bollinger_lband()
+        # RSI with multiple periods
+        df['RSI_14'] = RSIIndicator(df['Close'], window=14).rsi()
+        df['RSI_7'] = RSIIndicator(df['Close'], window=7).rsi()
+        df['RSI_21'] = RSIIndicator(df['Close'], window=21).rsi()
+        
+        # Bollinger Bands with multiple deviations
+        bb_20_2 = BollingerBands(df['Close'], window=20, window_dev=2)
+        df['BB_Upper'] = bb_20_2.bollinger_hband()
+        df['BB_Middle'] = bb_20_2.bollinger_mavg()
+        df['BB_Lower'] = bb_20_2.bollinger_lband()
+        
+        bb_20_1 = BollingerBands(df['Close'], window=20, window_dev=1)
+        df['BB_Upper_1'] = bb_20_1.bollinger_hband()
+        df['BB_Lower_1'] = bb_20_1.bollinger_lband()
         
         # Stochastic
-        stoch = StochasticOscillator(df['High'], df['Low'], df['Close'])
+        stoch = StochasticOscillator(df['High'], df['Low'], df['Close'], window=14, smooth_window=3)
         df['Stoch_K'] = stoch.stoch()
         df['Stoch_D'] = stoch.stoch_signal()
         
-        # ATR
-        df['ATR'] = AverageTrueRange(df['High'], df['Low'], df['Close']).average_true_range()
+        # ATR and Volatility
+        df['ATR_14'] = AverageTrueRange(df['High'], df['Low'], df['Close'], window=14).average_true_range()
+        df['ATR_7'] = AverageTrueRange(df['High'], df['Low'], df['Close'], window=7).average_true_range()
         
         # Volume indicators
         df['OBV'] = OnBalanceVolumeIndicator(df['Close'], df['Volume']).on_balance_volume()
-        df['Volume_SMA'] = df['Volume'].rolling(window=20).mean()
+        df['Volume_SMA_20'] = df['Volume'].rolling(window=20).mean()
+        df['Volume_Ratio'] = df['Volume'] / df['Volume_SMA_20']
         
         # VWAP (for intraday analysis)
         df['VWAP'] = (df['Volume'] * (df['High'] + df['Low'] + df['Close']) / 3).cumsum() / df['Volume'].cumsum()
         
+        # Additional momentum indicators
+        df['ROC_10'] = df['Close'].pct_change(periods=10) * 100  # Rate of Change
+        df['Williams_%R'] = (df['High'].rolling(14).max() - df['Close']) / (df['High'].rolling(14).max() - df['Low'].rolling(14).min()) * -100
+        
+        # Price channels
+        df['Donchian_High'] = df['High'].rolling(window=20).max()
+        df['Donchian_Low'] = df['Low'].rolling(window=20).min()
+        df['Donchian_Middle'] = (df['Donchian_High'] + df['Donchian_Low']) / 2
+        
         self.data = df
     
     def detect_volume_profile(self):
-        """Detect volume profile patterns as shown in Image 1"""
+        """Detect volume profile patterns with enhanced analysis"""
         df = self.data.tail(100)
+        
+        if len(df) < 20:
+            return {}
         
         # Calculate price levels and volume distribution
         price_range = df['High'].max() - df['Low'].min()
-        num_bins = 50
+        num_bins = 70  # More bins for finer analysis
         bins = np.linspace(df['Low'].min(), df['High'].max(), num_bins)
         
         volume_at_price = []
+        value_area_volumes = []
+        
         for i in range(len(bins) - 1):
             mask = (df['Close'] >= bins[i]) & (df['Close'] < bins[i + 1])
-            volume_at_price.append(df[mask]['Volume'].sum())
+            volume_sum = df[mask]['Volume'].sum()
+            volume_at_price.append(volume_sum)
+            
+            # Calculate value traded (volume * average price)
+            if mask.any():
+                avg_price = df[mask]['Close'].mean()
+                value_area_volumes.append(volume_sum * avg_price)
+            else:
+                value_area_volumes.append(0)
         
         volume_at_price = np.array(volume_at_price)
+        value_area_volumes = np.array(value_area_volumes)
         
         # Find Point of Control (POC) - highest volume price level
         poc_idx = np.argmax(volume_at_price)
         poc_price = (bins[poc_idx] + bins[poc_idx + 1]) / 2
+        poc_volume = volume_at_price[poc_idx]
         
         # Find Value Area (70% of volume)
         total_volume = volume_at_price.sum()
@@ -175,406 +316,1216 @@ class IndianEquityAnalyzer:
         value_area_high = bins[max(value_area_indices) + 1]
         value_area_low = bins[min(value_area_indices)]
         
-        # Identify high and low volume nodes
-        threshold_high = np.percentile(volume_at_price, 80)
-        threshold_low = np.percentile(volume_at_price, 20)
+        # Calculate Value Area percentage
+        value_area_percentage = (value_area_high - value_area_low) / price_range * 100
         
-        high_volume_nodes = bins[:-1][volume_at_price > threshold_high]
-        low_volume_nodes = bins[:-1][volume_at_price < threshold_low]
+        # Identify high and low volume nodes
+        volume_mean = volume_at_price.mean()
+        volume_std = volume_at_price.std()
+        
+        high_volume_threshold = volume_mean + volume_std
+        low_volume_threshold = volume_mean - volume_std
+        
+        high_volume_nodes = bins[:-1][volume_at_price > high_volume_threshold]
+        low_volume_nodes = bins[:-1][volume_at_price < low_volume_threshold]
+        
+        # Calculate volume profile statistics
+        volume_profile_stats = {
+            'total_volume': total_volume,
+            'volume_std': volume_std,
+            'volume_skew': stats.skew(volume_at_price),
+            'volume_kurtosis': stats.kurtosis(volume_at_price)
+        }
+        
+        # Identify single prints (low volume areas)
+        single_prints = bins[:-1][volume_at_price < (volume_mean * 0.3)]
         
         return {
             'poc_price': poc_price,
+            'poc_volume': poc_volume,
             'value_area_high': value_area_high,
             'value_area_low': value_area_low,
+            'value_area_percentage': value_area_percentage,
             'high_volume_nodes': high_volume_nodes,
             'low_volume_nodes': low_volume_nodes,
+            'single_prints': single_prints,
             'volume_distribution': volume_at_price,
-            'price_bins': bins
+            'value_distribution': value_area_volumes,
+            'price_bins': bins,
+            'stats': volume_profile_stats
         }
     
     def detect_chart_patterns(self):
-        """Detect Dan Zanger's Chart Patterns from Image 2"""
+        """Detect Dan Zanger's Chart Patterns with enhanced detection"""
         df = self.data.tail(100).copy()
+        if len(df) < 50:
+            return []
+        
         patterns = []
         
-        # 1. Cup and Handle Pattern
-        if self.detect_cup_and_handle(df):
+        # 1. Cup and Handle Pattern (Enhanced)
+        cup_handle_score = self.detect_cup_and_handle_enhanced(df)
+        if cup_handle_score > 0.7:
+            confidence = "HIGH" if cup_handle_score > 0.8 else "MEDIUM"
             patterns.append({
                 'pattern': 'Cup and Handle',
                 'signal': 'BULLISH',
-                'description': 'Signature pattern - Most powerful in bull markets',
-                'action': 'Consider LONG position on breakout with volume'
+                'confidence': confidence,
+                'score': cup_handle_score,
+                'description': 'Signature pattern - Most powerful in bull markets. Handle must be in upper half of cup with volume dry-up.',
+                'action': 'Enter LONG on breakout above handle with >3x volume',
+                'rules': [
+                    'Minimum 7-8 weeks for cup formation',
+                    'Handle should be 1-4 weeks',
+                    'Volume must confirm breakout',
+                    'Stop loss below handle low'
+                ]
             })
         
-        # 2. High Tight Flag
-        if self.detect_high_tight_flag(df):
+        # 2. High Tight Flag (Enhanced)
+        high_tight_score = self.detect_high_tight_flag_enhanced(df)
+        if high_tight_score > 0.7:
+            confidence = "HIGH" if high_tight_score > 0.85 else "MEDIUM"
             patterns.append({
                 'pattern': 'High Tight Flag',
                 'signal': 'BULLISH',
-                'description': 'Rare and explosive pattern',
-                'action': 'Enter on breakout with massive volume confirmation'
+                'confidence': confidence,
+                'score': high_tight_score,
+                'description': 'Rare and explosive pattern. Pole must be >20% gain in <4 weeks.',
+                'action': 'Enter on breakout with massive volume (>5x average)',
+                'rules': [
+                    'Flag should be <15% of pole',
+                    'Consolidation time: 3-5 weeks',
+                    'Volume dry-up during flag',
+                    'Stop loss below flag low'
+                ]
             })
         
         # 3. Ascending Triangle
-        if self.detect_ascending_triangle(df):
+        asc_triangle_score = self.detect_ascending_triangle_enhanced(df)
+        if asc_triangle_score > 0.7:
             patterns.append({
                 'pattern': 'Ascending Triangle',
                 'signal': 'BULLISH',
-                'description': 'Shows buyers getting aggressive',
-                'action': 'Breakout needs massive volume for confirmation'
+                'confidence': "MEDIUM",
+                'score': asc_triangle_score,
+                'description': 'Shows buyers getting aggressive at resistance. Higher lows indicate accumulation.',
+                'action': 'Breakout needs massive volume for confirmation',
+                'rules': [
+                    'At least 2-3 touches of resistance',
+                    '3-4 higher lows',
+                    'Breakout above resistance line',
+                    'Volume surge on breakout'
+                ]
             })
         
-        # 4. Flat Base
-        if self.detect_flat_base(df):
+        # 4. Flat Base (Williams' Pattern)
+        flat_base_score = self.detect_flat_base_enhanced(df)
+        if flat_base_score > 0.7:
             patterns.append({
                 'pattern': 'Flat Base',
                 'signal': 'BULLISH',
-                'description': 'Consolidation pattern indicating accumulation',
-                'action': 'Volume-fueled breakout required'
+                'confidence': "MEDIUM",
+                'score': flat_base_score,
+                'description': 'Consolidation pattern indicating institutional accumulation.',
+                'action': 'Volume-fueled breakout required. Buy on pivot point breakout.',
+                'rules': [
+                    '5-12 week consolidation',
+                    '<15% price variation',
+                    'Volume contraction during base',
+                    'Volume expansion on breakout'
+                ]
             })
         
-        # 5. Falling Wedge
-        if self.detect_falling_wedge(df):
+        # 5. Falling Wedge (Reversal Pattern)
+        falling_wedge_score = self.detect_falling_wedge_enhanced(df)
+        if falling_wedge_score > 0.7:
             patterns.append({
                 'pattern': 'Falling Wedge',
                 'signal': 'BULLISH',
-                'description': 'Reversal pattern with converging trendlines',
-                'action': 'Wait for upside breakout'
+                'confidence': "MEDIUM",
+                'score': falling_wedge_score,
+                'description': 'Reversal pattern with converging downtrend lines. Shows selling pressure decreasing.',
+                'action': 'Enter on upside breakout with volume confirmation',
+                'rules': [
+                    'Both trendlines declining',
+                    'Range narrowing by 30-40%',
+                    'Volume decreasing in wedge',
+                    'Breakout above upper trendline'
+                ]
+            })
+        
+        # 6. Double Bottom (Reversal Pattern)
+        double_bottom_score = self.detect_double_bottom(df)
+        if double_bottom_score > 0.7:
+            patterns.append({
+                'pattern': 'Double Bottom',
+                'signal': 'BULLISH',
+                'confidence': "MEDIUM",
+                'score': double_bottom_score,
+                'description': 'W-shaped reversal pattern indicating strong support.',
+                'action': 'Buy on breakout above resistance line (neckline)',
+                'rules': [
+                    'Two distinct bottoms at similar price',
+                    'Volume higher on first bottom',
+                    'Neckline breakout with volume',
+                    'Minimum 10% move from second bottom'
+                ]
             })
         
         return patterns
     
     def detect_swing_patterns(self):
-        """Detect Qullamaggie's Swing School Patterns from Image 3"""
-        df = self.data.tail(100).copy()
+        """Detect Qullamaggie's Swing School Patterns with enhanced detection"""
+        df = self.data.tail(60).copy()
+        if len(df) < 30:
+            return []
+        
         patterns = []
         
-        # 1. Breakout (High Tight Flag)
-        if self.check_breakout_pattern(df):
+        # 1. Breakout (High Tight Flag) - Qullamaggie Style
+        breakout_score = self.detect_qullamaggie_breakout(df)
+        if breakout_score > 0.7:
             patterns.append({
                 'pattern': 'Breakout (High Tight Flag)',
                 'signal': 'BULLISH',
-                'description': 'Stair-step pattern with VDU (Volume Dry Up)',
-                'action': 'Buyers stepping in early = tightening, VDU = Selling exhausted'
+                'confidence': "HIGH" if breakout_score > 0.8 else "MEDIUM",
+                'score': breakout_score,
+                'description': 'Stair-step pattern with VDU (Volume Dry Up). Qullamaggie: "Buyers stepping in early = tightening"',
+                'action': 'Enter on ORH (Opening Range High) with volume',
+                'rules': [
+                    '3-5 days of tight consolidation',
+                    'Volume Dry Up (VDU) present',
+                    'Above 10/20 EMA',
+                    'Institutional quality volume'
+                ]
             })
         
         # 2. Episodic Pivot (EP)
-        if self.check_episodic_pivot(df):
+        ep_score = self.detect_episodic_pivot_enhanced(df)
+        if ep_score > 0.7:
             patterns.append({
                 'pattern': 'Episodic Pivot (EP)',
                 'signal': 'BULLISH',
-                'description': 'ORH Entry with huge volume in first mins',
-                'action': 'Must hold above ORH, Gap and Go price action'
+                'confidence': "HIGH",
+                'score': ep_score,
+                'description': 'ORH Entry with huge volume in first mins. Gap and Go price action.',
+                'action': 'Enter at ORH, hold for 2-3 day momentum',
+                'rules': [
+                    'Gap up > 2%',
+                    'First 5-min volume > 3x average',
+                    'Holds above ORH all day',
+                    'Follow-through next day'
+                ]
             })
         
         # 3. Parabolic Short
-        if self.check_parabolic_short(df):
+        parabolic_score = self.detect_parabolic_short_enhanced(df)
+        if parabolic_score > 0.7:
             patterns.append({
                 'pattern': 'Parabolic Short',
                 'signal': 'BEARISH',
-                'description': 'Vertical move extended from 10/20 EMA',
-                'action': 'Wait for first crack, target 10/20 EMA reversion'
+                'confidence': "MEDIUM",
+                'score': parabolic_score,
+                'description': 'Vertical move extended from 10/20 EMA. Qullamaggie: "Wait for first crack"',
+                'action': 'Short on first red day, target 10/20 EMA reversion',
+                'rules': [
+                    '>30% move in 2-3 weeks',
+                    'Extended from 10 EMA by >15%',
+                    'Volume climax',
+                    'First red day with expanding range'
+                ]
+            })
+        
+        # 4. Gap and Go (Momentum)
+        gap_go_score = self.detect_gap_and_go(df)
+        if gap_go_score > 0.7:
+            patterns.append({
+                'pattern': 'Gap and Go',
+                'signal': 'BULLISH',
+                'confidence': "HIGH",
+                'score': gap_go_score,
+                'description': 'Earnings/News gap with continuation. Institutional momentum.',
+                'action': 'Enter on gap fill hold or continuation',
+                'rules': [
+                    'Gap > 5%',
+                    'Holds gap throughout day',
+                    'Volume > 5x average',
+                    'No fill of gap same day'
+                ]
+            })
+        
+        # 5. ABCD Pattern (Harmonic)
+        abcd_score = self.detect_abcd_pattern(df)
+        if abcd_score > 0.7:
+            patterns.append({
+                'pattern': 'ABCD Pattern',
+                'signal': 'REVERSAL',
+                'confidence': "MEDIUM",
+                'score': abcd_score,
+                'description': 'Harmonic pattern with specific Fibonacci ratios.',
+                'action': 'Enter at completion of D point with confirmation',
+                'rules': [
+                    'AB = CD in price and time',
+                    'BC retracement 61.8-78.6% of AB',
+                    'CD extension 127.2-161.8% of BC',
+                    'Volume confirmation at reversal'
+                ]
             })
         
         return patterns
     
-    def detect_cup_and_handle(self, df):
-        """Detect Cup and Handle pattern"""
-        if len(df) < 50:
-            return False
+    def detect_cup_and_handle_enhanced(self, df):
+        """Enhanced Cup and Handle detection with scoring"""
+        if len(df) < 60:
+            return 0
         
-        # Look for U-shape followed by consolidation
+        score = 0
         prices = df['Close'].values
+        volumes = df['Volume'].values
         
-        # Find potential cup (U-shape)
-        mid_point = len(prices) // 2
-        left_half = prices[:mid_point]
-        right_half = prices[mid_point:]
+        # Find the cup (minimum price point)
+        min_price_idx = np.argmin(prices)
+        if min_price_idx < 20 or min_price_idx > len(prices) - 20:
+            return 0
         
-        # Cup should have declining left side and rising right side
-        if len(left_half) > 10 and len(right_half) > 10:
-            left_trend = np.polyfit(range(len(left_half)), left_half, 1)[0]
-            right_trend = np.polyfit(range(len(right_half)), right_half, 1)[0]
-            
-            # Check for volume dry up in handle
-            recent_volume = df['Volume'].tail(10).mean()
-            avg_volume = df['Volume'].mean()
-            
-            if left_trend < 0 and right_trend > 0 and recent_volume < avg_volume * 0.7:
-                return True
+        # Cup formation
+        cup_left = prices[:min_price_idx]
+        cup_right = prices[min_price_idx:]
         
-        return False
+        if len(cup_left) < 20 or len(cup_right) < 20:
+            return 0
+        
+        # Cup depth and shape analysis
+        cup_depth = (max(cup_left[0], cup_right[-1]) - prices[min_price_idx]) / max(cup_left[0], cup_right[-1])
+        
+        if 0.15 <= cup_depth <= 0.40:  # Ideal cup depth 15-40%
+            score += 0.3
+        
+        # Handle formation (last 15-25% of data)
+        handle_start = int(len(df) * 0.75)
+        handle_data = df.iloc[handle_start:]
+        
+        if len(handle_data) < 10:
+            return 0
+        
+        # Handle should be in upper half of cup
+        cup_top = max(cup_left[0], cup_right[-1])
+        cup_bottom = prices[min_price_idx]
+        cup_mid = (cup_top + cup_bottom) / 2
+        
+        handle_avg = handle_data['Close'].mean()
+        if handle_avg > cup_mid:
+            score += 0.2
+        
+        # Volume analysis
+        cup_volume = df['Volume'].iloc[:handle_start].mean()
+        handle_volume = handle_data['Volume'].mean()
+        
+        if handle_volume < cup_volume * 0.7:  # Volume dry up in handle
+            score += 0.2
+        
+        # Handle tightness
+        handle_range = (handle_data['High'].max() - handle_data['Low'].min()) / handle_avg
+        if handle_range < 0.15:  # Tight consolidation
+            score += 0.2
+        
+        # Overall price trend
+        left_trend = np.polyfit(range(len(cup_left)), cup_left, 1)[0]
+        right_trend = np.polyfit(range(len(cup_right)), cup_right, 1)[0]
+        
+        if left_trend < 0 and right_trend > 0:  # U-shape
+            score += 0.1
+        
+        return score
     
-    def detect_high_tight_flag(self, df):
-        """Detect High Tight Flag pattern"""
+    def detect_high_tight_flag_enhanced(self, df):
+        """Enhanced High Tight Flag detection"""
         if len(df) < 30:
-            return False
+            return 0
         
-        # Check for strong uptrend followed by tight consolidation
-        recent_30 = df.tail(30)
+        score = 0
+        recent = df.tail(30)
         
-        # Strong uptrend (pole)
-        pole_data = recent_30.head(15)
+        # Identify pole (strong uptrend)
+        pole_length = min(15, len(recent) // 2)
+        pole_data = recent.head(pole_length)
         pole_gain = (pole_data['Close'].iloc[-1] - pole_data['Close'].iloc[0]) / pole_data['Close'].iloc[0]
         
-        # Tight flag
-        flag_data = recent_30.tail(15)
+        if pole_gain > 0.20:  # Minimum 20% gain
+            score += 0.3
+        
+        # Flag consolidation
+        flag_data = recent.tail(len(recent) - pole_length)
         flag_range = (flag_data['High'].max() - flag_data['Low'].min()) / flag_data['Close'].mean()
         
-        if pole_gain > 0.20 and flag_range < 0.15:  # 20% gain in pole, <15% range in flag
-            return True
+        if flag_range < 0.15:  # Tight flag
+            score += 0.3
         
-        return False
+        # Volume analysis
+        pole_volume = pole_data['Volume'].mean()
+        flag_volume = flag_data['Volume'].mean()
+        
+        if flag_volume < pole_volume * 0.6:  # Volume dry up
+            score += 0.2
+        
+        # Flag should be above midpoint of pole
+        pole_mid = (pole_data['Close'].iloc[0] + pole_data['Close'].iloc[-1]) / 2
+        flag_avg = flag_data['Close'].mean()
+        
+        if flag_avg > pole_mid:
+            score += 0.2
+        
+        return score
     
-    def detect_ascending_triangle(self, df):
-        """Detect Ascending Triangle pattern"""
+    def detect_ascending_triangle_enhanced(self, df):
+        """Enhanced Ascending Triangle detection"""
         if len(df) < 30:
-            return False
+            return 0
         
+        score = 0
         recent = df.tail(30)
         
-        # Check for flat resistance (horizontal top)
-        recent_highs = recent['High'].tail(10)
-        high_variance = recent_highs.std() / recent_highs.mean()
+        # Resistance line (flat top)
+        highs = recent['High'].values
+        resistance_slope = np.polyfit(range(len(highs)), highs, 1)[0]
+        resistance_variance = np.std(highs) / np.mean(highs)
         
-        # Check for rising support
+        if resistance_variance < 0.02 and abs(resistance_slope) < 0.001:
+            score += 0.4
+        
+        # Support line (rising)
         lows = recent['Low'].values
-        low_trend = np.polyfit(range(len(lows)), lows, 1)[0]
+        support_slope = np.polyfit(range(len(lows)), lows, 1)[0]
         
-        if high_variance < 0.02 and low_trend > 0:  # Flat top, rising bottom
-            return True
+        if support_slope > 0.001:  # Rising support
+            score += 0.3
         
-        return False
+        # Volume pattern
+        volume_trend = np.polyfit(range(len(recent)), recent['Volume'].values, 1)[0]
+        if volume_trend < 0:  # Volume declining in triangle
+            score += 0.2
+        
+        # Breakout imminent check
+        current_close = recent['Close'].iloc[-1]
+        resistance_level = np.mean(highs[-5:])  # Recent resistance
+        
+        if current_close > resistance_level * 0.98:  # Near breakout
+            score += 0.1
+        
+        return score
     
-    def detect_flat_base(self, df):
-        """Detect Flat Base consolidation"""
+    def detect_flat_base_enhanced(self, df):
+        """Enhanced Flat Base detection"""
         if len(df) < 20:
-            return False
+            return 0
         
+        score = 0
         recent = df.tail(20)
         
-        # Check for tight range consolidation
+        # Price range analysis
         price_range = (recent['High'].max() - recent['Low'].min()) / recent['Close'].mean()
         
-        if price_range < 0.10:  # Less than 10% range
-            return True
+        if price_range < 0.12:  # Tight consolidation
+            score += 0.4
         
-        return False
+        # Time analysis (5-12 weeks ideal)
+        if 15 <= len(recent) <= 60:  # 3-12 weeks of data
+            score += 0.2
+        
+        # Volume contraction
+        volume_mean = recent['Volume'].mean()
+        volume_std = recent['Volume'].std()
+        
+        if volume_std / volume_mean < 0.5:  # Low volume volatility
+            score += 0.2
+        
+        # Support level holding
+        support_level = recent['Low'].min()
+        recent_lows = recent['Low'].tail(5).values
+        
+        if all(low > support_level * 0.98 for low in recent_lows):
+            score += 0.2
+        
+        return score
     
-    def detect_falling_wedge(self, df):
-        """Detect Falling Wedge pattern"""
+    def detect_falling_wedge_enhanced(self, df):
+        """Enhanced Falling Wedge detection"""
         if len(df) < 30:
-            return False
+            return 0
         
+        score = 0
         recent = df.tail(30)
         
-        # Both highs and lows should be declining but converging
         highs = recent['High'].values
         lows = recent['Low'].values
         
+        # Both trendlines declining
         high_trend = np.polyfit(range(len(highs)), highs, 1)[0]
         low_trend = np.polyfit(range(len(lows)), lows, 1)[0]
         
-        # Range should be narrowing
+        if high_trend < 0 and low_trend < 0:
+            score += 0.3
+        
+        # Converging trendlines (range narrowing)
         early_range = recent.head(10)['High'].max() - recent.head(10)['Low'].min()
         late_range = recent.tail(10)['High'].max() - recent.tail(10)['Low'].min()
         
-        if high_trend < 0 and low_trend < 0 and late_range < early_range * 0.7:
-            return True
+        if late_range < early_range * 0.7:  # Range narrowed by 30%
+            score += 0.3
         
-        return False
+        # Volume declining
+        volume_trend = np.polyfit(range(len(recent)), recent['Volume'].values, 1)[0]
+        if volume_trend < 0:
+            score += 0.2
+        
+        # Near breakout (approaching convergence)
+        current_range = recent['High'].iloc[-1] - recent['Low'].iloc[-1]
+        if current_range < late_range * 1.1:  # Very tight range
+            score += 0.2
+        
+        return score
     
-    def check_breakout_pattern(self, df):
-        """Check for Qullamaggie breakout pattern"""
-        if len(df) < 20:
-            return False
+    def detect_double_bottom(self, df):
+        """Detect Double Bottom pattern"""
+        if len(df) < 40:
+            return 0
         
+        score = 0
+        prices = df['Close'].values
+        
+        # Find local minima
+        from scipy.signal import find_peaks
+        
+        # Use negative prices to find troughs
+        troughs, _ = find_peaks(-prices, distance=10, prominence=np.std(prices)*0.5)
+        
+        if len(troughs) >= 2:
+            # Get two most recent troughs
+            trough1_idx = troughs[-2]
+            trough2_idx = troughs[-1]
+            
+            # Check if troughs are similar in price
+            trough1_price = prices[trough1_idx]
+            trough2_price = prices[trough2_idx]
+            
+            price_diff = abs(trough1_price - trough2_price) / trough1_price
+            
+            if price_diff < 0.03:  # Within 3%
+                score += 0.3
+            
+            # Check if there's a peak between them (neckline)
+            if trough2_idx - trough1_idx > 10:
+                between_prices = prices[trough1_idx:trough2_idx]
+                peak_idx = np.argmax(between_prices)
+                peak_price = between_prices[peak_idx]
+                
+                # Volume analysis
+                volume1 = df['Volume'].iloc[trough1_idx]
+                volume2 = df['Volume'].iloc[trough2_idx]
+                
+                if volume1 > volume2:  # First bottom higher volume
+                    score += 0.2
+                
+                # Current price relative to neckline
+                current_price = prices[-1]
+                if current_price > peak_price * 0.98:  # Near breakout
+                    score += 0.3
+        
+        return score
+    
+    def detect_qullamaggie_breakout(self, df):
+        """Detect Qullamaggie style breakout"""
+        if len(df) < 20:
+            return 0
+        
+        score = 0
         recent = df.tail(20)
         
         # Check for higher lows (stair-step)
         lows = recent['Low'].values
-        higher_lows = all(lows[i] >= lows[i-1] * 0.98 for i in range(1, len(lows)))
+        higher_lows = True
         
-        # Volume dry up
+        for i in range(1, len(lows)):
+            if lows[i] < lows[i-1] * 0.98:  # More than 2% lower
+                higher_lows = False
+                break
+        
+        if higher_lows:
+            score += 0.3
+        
+        # Volume Dry Up (VDU)
         recent_vol = recent['Volume'].tail(5).mean()
         avg_vol = recent['Volume'].mean()
         
-        if higher_lows and recent_vol < avg_vol * 0.6:
-            return True
+        if recent_vol < avg_vol * 0.6:
+            score += 0.3
         
-        return False
-    
-    def check_episodic_pivot(self, df):
-        """Check for Episodic Pivot pattern"""
-        if len(df) < 10:
-            return False
-        
-        recent = df.tail(10)
-        
-        # Look for gap up with huge volume
-        for i in range(1, len(recent)):
-            gap = (recent['Low'].iloc[i] - recent['High'].iloc[i-1]) / recent['High'].iloc[i-1]
-            vol_spike = recent['Volume'].iloc[i] / recent['Volume'].iloc[:i].mean()
-            
-            if gap > 0.02 and vol_spike > 3:  # 2% gap with 3x volume
-                return True
-        
-        return False
-    
-    def check_parabolic_short(self, df):
-        """Check for Parabolic Short setup"""
-        if len(df) < 20:
-            return False
-        
-        recent = df.tail(20)
-        
-        # Calculate distance from 10/20 EMA
+        # Above key moving averages
         if 'EMA_10' in recent.columns and 'EMA_20' in recent.columns:
             current_price = recent['Close'].iloc[-1]
             ema_10 = recent['EMA_10'].iloc[-1]
             ema_20 = recent['EMA_20'].iloc[-1]
             
-            # Check for vertical move (>15% above EMA)
+            if current_price > ema_10 and current_price > ema_20:
+                score += 0.2
+        
+        # Tight range consolidation
+        price_range = (recent['High'].max() - recent['Low'].min()) / recent['Close'].mean()
+        if price_range < 0.15:
+            score += 0.2
+        
+        return score
+    
+    def detect_episodic_pivot_enhanced(self, df):
+        """Enhanced Episodic Pivot detection"""
+        if len(df) < 10:
+            return 0
+        
+        score = 0
+        recent = df.tail(10)
+        
+        # Look for gap up with huge volume
+        gap_found = False
+        volume_spike_found = False
+        
+        for i in range(1, len(recent)):
+            prev_close = recent['Close'].iloc[i-1]
+            current_open = recent['Open'].iloc[i]
+            
+            gap = (current_open - prev_close) / prev_close
+            
+            if gap > 0.02:  # 2% gap
+                gap_found = True
+                
+                # Volume spike
+                current_volume = recent['Volume'].iloc[i]
+                avg_prev_volume = recent['Volume'].iloc[:i].mean()
+                
+                if current_volume > avg_prev_volume * 3:
+                    volume_spike_found = True
+        
+        if gap_found:
+            score += 0.4
+        
+        if volume_spike_found:
+            score += 0.4
+        
+        # Follow-through check
+        if len(recent) >= 3:
+            if recent['Close'].iloc[-1] > recent['Open'].iloc[-3]:  # Holding gains
+                score += 0.2
+        
+        return score
+    
+    def detect_parabolic_short_enhanced(self, df):
+        """Enhanced Parabolic Short detection"""
+        if len(df) < 20:
+            return 0
+        
+        score = 0
+        recent = df.tail(20)
+        
+        # Calculate recent gains
+        price_gain = (recent['Close'].iloc[-1] - recent['Close'].iloc[0]) / recent['Close'].iloc[0]
+        
+        if price_gain > 0.30:  # Minimum 30% gain
+            score += 0.3
+        
+        # Distance from moving averages
+        if 'EMA_10' in recent.columns and 'EMA_20' in recent.columns:
+            current_price = recent['Close'].iloc[-1]
+            ema_10 = recent['EMA_10'].iloc[-1]
+            ema_20 = recent['EMA_20'].iloc[-1]
+            
             deviation_10 = (current_price - ema_10) / ema_10
             deviation_20 = (current_price - ema_20) / ema_20
             
             if deviation_10 > 0.15 or deviation_20 > 0.20:
-                return True
+                score += 0.3
         
-        return False
+        # Volume climax
+        recent_volume = recent['Volume'].tail(5).mean()
+        avg_volume = recent['Volume'].mean()
+        
+        if recent_volume > avg_volume * 2:  # Volume climax
+            score += 0.2
+        
+        # First sign of weakness
+        if len(recent) >= 3:
+            last_3 = recent.tail(3)
+            if last_3['Close'].iloc[-1] < last_3['Close'].iloc[-2]:  # First red day
+                score += 0.2
+        
+        return score
+    
+    def detect_gap_and_go(self, df):
+        """Detect Gap and Go pattern"""
+        if len(df) < 5:
+            return 0
+        
+        score = 0
+        recent = df.tail(5)
+        
+        # Check for gap
+        if len(recent) >= 2:
+            gap = (recent['Open'].iloc[1] - recent['Close'].iloc[0]) / recent['Close'].iloc[0]
+            
+            if gap > 0.05:  # 5% gap
+                score += 0.4
+                
+                # Volume surge
+                gap_volume = recent['Volume'].iloc[1]
+                prev_volume = recent['Volume'].iloc[0]
+                
+                if gap_volume > prev_volume * 3:
+                    score += 0.3
+                
+                # Gap holds (no fill)
+                day_low = recent['Low'].iloc[1]
+                prev_close = recent['Close'].iloc[0]
+                
+                if day_low > prev_close:  # Gap not filled
+                    score += 0.3
+        
+        return score
+    
+    def detect_abcd_pattern(self, df):
+        """Detect ABCD harmonic pattern"""
+        if len(df) < 40:
+            return 0
+        
+        score = 0
+        prices = df['Close'].values
+        
+        # Simplified detection - look for clear AB=CD structure
+        from scipy.signal import find_peaks, find_peaks
+        
+        peaks, _ = find_peaks(prices, distance=10, prominence=np.std(prices)*0.5)
+        troughs, _ = find_peaks(-prices, distance=10, prominence=np.std(prices)*0.5)
+        
+        if len(peaks) >= 2 and len(troughs) >= 2:
+            # Look for potential ABCD structure in last 30 periods
+            recent_prices = prices[-30:]
+            
+            # Simple swing detection
+            swings = []
+            for i in range(1, len(recent_prices)-1):
+                if recent_prices[i] > recent_prices[i-1] and recent_prices[i] > recent_prices[i+1]:
+                    swings.append(('peak', i, recent_prices[i]))
+                elif recent_prices[i] < recent_prices[i-1] and recent_prices[i] < recent_prices[i+1]:
+                    swings.append(('trough', i, recent_prices[i]))
+            
+            if len(swings) >= 4:
+                # Check for ABCD pattern
+                for i in range(len(swings)-3):
+                    if (swings[i][0] == 'peak' and swings[i+1][0] == 'trough' and 
+                        swings[i+2][0] == 'peak' and swings[i+3][0] == 'trough'):
+                        
+                        A = swings[i][2]
+                        B = swings[i+1][2]
+                        C = swings[i+2][2]
+                        D = swings[i+3][2]
+                        
+                        # Calculate Fibonacci ratios
+                        AB = A - B
+                        BC = C - B
+                        CD = C - D
+                        
+                        if AB > 0 and BC > 0 and CD > 0:
+                            # Check for approximate Fibonacci ratios
+                            bc_ab_ratio = BC / AB
+                            cd_bc_ratio = CD / BC
+                            
+                            if 0.618 <= bc_ab_ratio <= 0.786:  # BC retracement
+                                score += 0.3
+                            if 1.272 <= cd_bc_ratio <= 1.618:  # CD extension
+                                score += 0.3
+                            
+                            # AB ≈ CD
+                            ab_cd_ratio = AB / CD
+                            if 0.8 <= ab_cd_ratio <= 1.2:
+                                score += 0.2
+        
+        return score
     
     def get_trading_signal(self):
-        """Generate comprehensive trading signal"""
+        """Generate comprehensive trading signal with weighted scoring"""
         df = self.data
+        if df is None or len(df) < 50:
+            return "NO DATA", [], 0
+        
         current = df.iloc[-1]
         
         signals = []
         score = 0
+        max_score = 0
         
-        # Trend Analysis
+        # Weighted scoring system
+        weights = {
+            'trend': 0.3,
+            'momentum': 0.25,
+            'volume': 0.2,
+            'volatility': 0.15,
+            'pattern': 0.1
+        }
+        
+        # 1. Trend Analysis (30%)
+        trend_score = 0
+        trend_signals = []
+        
         if current['Close'] > current['SMA_20']:
-            signals.append("✅ Price above 20 SMA (Short-term bullish)")
-            score += 1
+            trend_signals.append("✅ Price above 20 SMA (Short-term bullish)")
+            trend_score += 1
         else:
-            signals.append("❌ Price below 20 SMA (Short-term bearish)")
-            score -= 1
+            trend_signals.append("❌ Price below 20 SMA (Short-term bearish)")
+            trend_score -= 1
         
         if current['Close'] > current['SMA_50']:
-            signals.append("✅ Price above 50 SMA (Medium-term bullish)")
-            score += 1
+            trend_signals.append("✅ Price above 50 SMA (Medium-term bullish)")
+            trend_score += 2
         else:
-            signals.append("❌ Price below 50 SMA (Medium-term bearish)")
-            score -= 1
+            trend_signals.append("❌ Price below 50 SMA (Medium-term bearish)")
+            trend_score -= 2
         
         if current['Close'] > current['SMA_200']:
-            signals.append("✅ Price above 200 SMA (Long-term bullish)")
-            score += 2
+            trend_signals.append("✅ Price above 200 SMA (Long-term bullish)")
+            trend_score += 3
         else:
-            signals.append("❌ Price below 200 SMA (Long-term bearish)")
-            score -= 2
+            trend_signals.append("❌ Price below 200 SMA (Long-term bearish)")
+            trend_score -= 3
+        
+        # EMA alignment check
+        if (current['EMA_8'] > current['EMA_21'] > current['EMA_55'] and
+            current['Close'] > current['EMA_8']):
+            trend_signals.append("✅ All EMAs aligned bullish (8 > 21 > 55)")
+            trend_score += 2
+        
+        trend_normalized = trend_score / 8  # Normalize to -1 to 1
+        score += trend_normalized * weights['trend'] * 100
+        
+        # 2. Momentum Analysis (25%)
+        momentum_score = 0
+        momentum_signals = []
         
         # MACD
         if current['MACD'] > current['MACD_Signal']:
-            signals.append("✅ MACD bullish crossover")
-            score += 1
+            momentum_signals.append("✅ MACD bullish (Above signal line)")
+            momentum_score += 2
         else:
-            signals.append("❌ MACD bearish crossover")
-            score -= 1
+            momentum_signals.append("❌ MACD bearish (Below signal line)")
+            momentum_score -= 2
         
         # RSI
-        if current['RSI'] > 70:
-            signals.append("⚠️ RSI Overbought (>70)")
-            score -= 1
-        elif current['RSI'] < 30:
-            signals.append("✅ RSI Oversold (<30) - Potential reversal")
-            score += 1
+        if current['RSI_14'] > 70:
+            momentum_signals.append("⚠️ RSI Overbought (>70)")
+            momentum_score -= 1
+        elif current['RSI_14'] < 30:
+            momentum_signals.append("✅ RSI Oversold (<30)")
+            momentum_score += 2
         else:
-            signals.append(f"✅ RSI Neutral ({current['RSI']:.2f})")
+            momentum_signals.append(f"✅ RSI Neutral ({current['RSI_14']:.1f})")
         
-        # Volume Analysis
-        if current['Volume'] > current['Volume_SMA']:
-            signals.append("✅ Above average volume (Strong interest)")
-            score += 1
+        # Stochastic
+        if current['Stoch_K'] > 80 and current['Stoch_D'] > 80:
+            momentum_signals.append("⚠️ Stochastic overbought")
+            momentum_score -= 1
+        elif current['Stoch_K'] < 20 and current['Stoch_D'] < 20:
+            momentum_signals.append("✅ Stochastic oversold")
+            momentum_score += 1
+        
+        momentum_normalized = momentum_score / 5
+        score += momentum_normalized * weights['momentum'] * 100
+        
+        # 3. Volume Analysis (20%)
+        volume_score = 0
+        volume_signals = []
+        
+        if current['Volume'] > current['Volume_SMA_20'] * 1.5:
+            volume_signals.append("✅ High volume (Strong interest)")
+            volume_score += 2
+        elif current['Volume'] < current['Volume_SMA_20'] * 0.5:
+            volume_signals.append("⚠️ Very low volume (Caution)")
+            volume_score -= 1
         else:
-            signals.append("⚠️ Below average volume (Weak interest)")
+            volume_signals.append("✅ Average volume")
+        
+        # OBV trend
+        if len(df) > 20:
+            obv_trend = np.polyfit(range(20), df['OBV'].tail(20).values, 1)[0]
+            if obv_trend > 0:
+                volume_signals.append("✅ OBV trending up (Accumulation)")
+                volume_score += 1
+            else:
+                volume_signals.append("❌ OBV trending down (Distribution)")
+                volume_score -= 1
+        
+        volume_normalized = volume_score / 3
+        score += volume_normalized * weights['volume'] * 100
+        
+        # 4. Volatility Analysis (15%)
+        volatility_score = 0
+        volatility_signals = []
+        
+        # ATR relative position
+        atr_percent = current['ATR_14'] / current['Close'] * 100
+        if atr_percent > 3:
+            volatility_signals.append(f"⚠️ High volatility (ATR: {atr_percent:.1f}%)")
+            volatility_score -= 1
+        elif atr_percent < 1:
+            volatility_signals.append(f"✅ Low volatility (ATR: {atr_percent:.1f}%)")
+            volatility_score += 1
+        else:
+            volatility_signals.append(f"✅ Normal volatility (ATR: {atr_percent:.1f}%)")
+        
+        # Bollinger Band position
+        bb_position = (current['Close'] - current['BB_Lower']) / (current['BB_Upper'] - current['BB_Lower'])
+        if bb_position > 0.8:
+            volatility_signals.append("⚠️ Near BB upper band (Overbought)")
+            volatility_score -= 1
+        elif bb_position < 0.2:
+            volatility_signals.append("✅ Near BB lower band (Oversold)")
+            volatility_score += 1
+        
+        volatility_normalized = volatility_score / 2
+        score += volatility_normalized * weights['volatility'] * 100
+        
+        # 5. Pattern Detection (10%)
+        pattern_score = 0
+        pattern_signals = []
+        
+        patterns = self.detect_chart_patterns() + self.detect_swing_patterns()
+        bullish_patterns = sum(1 for p in patterns if p['signal'] == 'BULLISH')
+        bearish_patterns = sum(1 for p in patterns if p['signal'] == 'BEARISH')
+        
+        if bullish_patterns > bearish_patterns:
+            pattern_signals.append(f"✅ {bullish_patterns} bullish patterns detected")
+            pattern_score += 2
+        elif bearish_patterns > bullish_patterns:
+            pattern_signals.append(f"❌ {bearish_patterns} bearish patterns detected")
+            pattern_score -= 2
+        
+        pattern_normalized = pattern_score / 2
+        score += pattern_normalized * weights['pattern'] * 100
+        
+        # Combine all signals
+        signals.extend(trend_signals)
+        signals.extend(momentum_signals)
+        signals.extend(volume_signals)
+        signals.extend(volatility_signals)
+        signals.extend(pattern_signals)
         
         # Determine overall signal
-        if score >= 4:
+        if score >= 70:
             overall = "🟢 STRONG BUY"
-        elif score >= 2:
+            color = "green"
+        elif score >= 50:
             overall = "🟢 BUY"
-        elif score >= -1:
+            color = "lightgreen"
+        elif score >= 30:
+            overall = "🟡 ACCUMULATE"
+            color = "orange"
+        elif score >= 10:
             overall = "🟡 HOLD"
-        elif score >= -3:
+            color = "yellow"
+        elif score >= -10:
+            overall = "🟡 NEUTRAL"
+            color = "gray"
+        elif score >= -30:
             overall = "🔴 SELL"
+            color = "pink"
         else:
             overall = "🔴 STRONG SELL"
+            color = "red"
         
-        return overall, signals, score
+        return overall, signals, score, color
     
-    def get_risk_management(self):
-        """Calculate risk management parameters based on Zanger/Qullamaggie rules"""
+    def get_risk_management(self, portfolio_value=100000):
+        """Calculate advanced risk management parameters"""
         df = self.data
+        if df is None or len(df) < 20:
+            return {}
+        
         current_price = df['Close'].iloc[-1]
-        atr = df['ATR'].iloc[-1]
+        atr = df['ATR_14'].iloc[-1]
         
-        # Stop loss based on ATR and breakout point
-        stop_loss_atr = current_price - (2 * atr)  # 2 ATR stop
-        stop_loss_percent = current_price * 0.98  # 2% hard stop
+        # Multi-level stop loss strategy
+        stop_loss_levels = {
+            'tight': current_price - (1 * atr),  # 1 ATR stop (aggressive)
+            'normal': current_price - (1.5 * atr),  # 1.5 ATR stop (balanced)
+            'wide': current_price - (2 * atr),  # 2 ATR stop (conservative)
+            'percentage': current_price * 0.97,  # 3% hard stop
+            'technical': min(
+                df['Low'].tail(20).min(),
+                df['BB_Lower'].iloc[-1],
+                df['SMA_20'].iloc[-1] * 0.98
+            )
+        }
         
-        stop_loss = max(stop_loss_atr, stop_loss_percent)
+        recommended_stop = max(
+            stop_loss_levels['technical'],
+            stop_loss_levels['percentage'],
+            stop_loss_levels['normal']
+        )
         
-        # Profit targets
-        target_1 = current_price * 1.15  # 15% gain (Zanger: 20-30%)
-        target_2 = current_price * 1.30  # 30% gain
+        # Multi-level profit targets
+        profit_targets = {
+            'target_1': current_price * 1.10,  # 10% (quick profit)
+            'target_2': current_price * 1.20,  # 20% (primary target)
+            'target_3': current_price * 1.35,  # 35% (runner)
+            'fib_161': current_price * 1.618,  # Fibonacci extension
+            'measured_move': current_price + (current_price - recommended_stop) * 2  # 2:1 measured move
+        }
         
-        # Position sizing (1% portfolio risk rule)
-        risk_per_share = current_price - stop_loss
+        # Position sizing based on risk
+        risk_per_share = current_price - recommended_stop
+        
+        # Calculate position size (1% portfolio risk rule)
+        max_risk_amount = portfolio_value * 0.01
+        
+        if risk_per_share > 0:
+            position_size = int(max_risk_amount / risk_per_share)
+            position_value = position_size * current_price
+            
+            # Additional constraints
+            max_position_value = portfolio_value * 0.25  # Max 25% in one position
+            if position_value > max_position_value:
+                position_size = int(max_position_value / current_price)
+                position_value = position_size * current_price
+            
+            actual_risk = position_size * risk_per_share
+            portfolio_risk_percent = (actual_risk / portfolio_value) * 100
+        else:
+            position_size = 0
+            position_value = 0
+            actual_risk = 0
+            portfolio_risk_percent = 0
+        
+        # Risk/Reward ratios
+        rr_ratios = {}
+        for target_name, target_price in profit_targets.items():
+            if risk_per_share > 0:
+                reward = target_price - current_price
+                rr_ratios[target_name] = reward / risk_per_share
+            else:
+                rr_ratios[target_name] = 0
+        
+        # Volatility-adjusted position sizing
+        volatility_score = atr / current_price * 100
+        position_adjustment = 1.0
+        
+        if volatility_score > 4:
+            position_adjustment = 0.7  # Reduce position by 30% for high volatility
+        elif volatility_score < 1.5:
+            position_adjustment = 1.2  # Increase position by 20% for low volatility
+        
+        adjusted_position_size = int(position_size * position_adjustment)
         
         return {
             'entry_price': current_price,
-            'stop_loss': stop_loss,
-            'target_1': target_1,
-            'target_2': target_2,
+            'stop_loss': recommended_stop,
+            'stop_loss_levels': stop_loss_levels,
+            'profit_targets': profit_targets,
             'risk_per_share': risk_per_share,
-            'risk_reward_1': (target_1 - current_price) / risk_per_share if risk_per_share > 0 else 0,
-            'risk_reward_2': (target_2 - current_price) / risk_per_share if risk_per_share > 0 else 0
+            'position_size': adjusted_position_size,
+            'position_value': adjusted_position_size * current_price,
+            'portfolio_risk_percent': portfolio_risk_percent,
+            'risk_reward_ratios': rr_ratios,
+            'atr_percent': volatility_score,
+            'position_adjustment': position_adjustment,
+            'max_drawdown': (current_price - recommended_stop) / current_price * 100
         }
     
-    def get_company_info(self):
-        """Get company fundamental information"""
-        info = {}
+    def get_market_context(self):
+        """Analyze broader market conditions"""
         try:
-            ticker_info = self.ticker.info
-            info = {
-                'name': ticker_info.get('longName', 'N/A'),
-                'sector': ticker_info.get('sector', 'N/A'),
-                'industry': ticker_info.get('industry', 'N/A'),
-                'market_cap': ticker_info.get('marketCap', 0),
-                'pe_ratio': ticker_info.get('trailingPE', 'N/A'),
-                'pb_ratio': ticker_info.get('priceToBook', 'N/A'),
-                'dividend_yield': ticker_info.get('dividendYield', 0),
-                'eps': ticker_info.get('trailingEps', 'N/A'),
-                '52w_high': ticker_info.get('fiftyTwoWeekHigh', 0),
-                '52w_low': ticker_info.get('fiftyTwoWeekLow', 0),
-                'beta': ticker_info.get('beta', 'N/A'),
-                'description': ticker_info.get('longBusinessSummary', 'N/A')
+            # Nifty 50
+            nifty = yf.Ticker("^NSEI")
+            nifty_data = nifty.history(period='3mo')
+            
+            # India VIX
+            vix = yf.Ticker("^INDIAVIX")
+            vix_data = vix.history(period='1mo')
+            
+            if nifty_data.empty:
+                return {}
+            
+            current_nifty = nifty_data['Close'].iloc[-1]
+            nifty_sma_50 = nifty_data['Close'].rolling(window=50).mean().iloc[-1]
+            nifty_sma_200 = nifty_data['Close'].rolling(window=200).mean().iloc[-1]
+            
+            nifty_trend = "BULLISH" if current_nifty > nifty_sma_50 and current_nifty > nifty_sma_200 else "BEARISH"
+            
+            current_vix = vix_data['Close'].iloc[-1] if not vix_data.empty else None
+            
+            # Market breadth (simplified)
+            nifty_gainers = 0  # This would require actual breadth data
+            
+            return {
+                'nifty_level': current_nifty,
+                'nifty_change': ((current_nifty - nifty_data['Close'].iloc[0]) / nifty_data['Close'].iloc[0]) * 100,
+                'nifty_trend': nifty_trend,
+                'above_50_sma': current_nifty > nifty_sma_50,
+                'above_200_sma': current_nifty > nifty_sma_200,
+                'vix': current_vix,
+                'market_condition': 'High Volatility' if current_vix and current_vix > 20 else 'Normal',
+                'vix_trend': 'FEAR' if current_vix and current_vix > 25 else 'GREED' if current_vix and current_vix < 15 else 'NEUTRAL'
             }
+        except:
+            return {}
+    
+    def get_sector_analysis(self):
+        """Get sector and peer analysis"""
+        try:
+            info = self.ticker.info
+            sector = info.get('sector', '')
+            industry = info.get('industry', '')
+            
+            # Sector ETF mapping for Indian markets
+            sector_etfs = {
+                'Technology': 'INFY.NS',
+                'Financial Services': 'HDFCBANK.NS',
+                'Energy': 'RELIANCE.NS',
+                'Healthcare': 'SUNPHARMA.NS',
+                'Consumer Defensive': 'ITC.NS',
+                'Industrials': 'LT.NS',
+                'Communication Services': 'BHARTIARTL.NS',
+                'Basic Materials': 'TATASTEEL.NS',
+                'Utilities': 'NTPC.NS',
+                'Real Estate': 'DLF.NS',
+                'Consumer Cyclical': 'MARUTI.NS'
+            }
+            
+            if sector in sector_etfs:
+                sector_ticker = yf.Ticker(sector_etfs[sector])
+                sector_data = sector_ticker.history(period=self.period)
+                
+                if not sector_data.empty and not self.data.empty:
+                    stock_return = (self.data['Close'].iloc[-1] / self.data['Close'].iloc[0] - 1) * 100
+                    sector_return = (sector_data['Close'].iloc[-1] / sector_data['Close'].iloc[0] - 1) * 100
+                    
+                    # Calculate relative strength
+                    relative_strength = stock_return - sector_return
+                    
+                    # Beta calculation (simplified)
+                    if len(self.data) > 20 and len(sector_data) > 20:
+                        stock_returns = self.data['Close'].pct_change().dropna()
+                        sector_returns = sector_data['Close'].pct_change().dropna()
+                        
+                        # Align data
+                        common_index = stock_returns.index.intersection(sector_returns.index)
+                        if len(common_index) > 10:
+                            stock_returns_aligned = stock_returns.loc[common_index]
+                            sector_returns_aligned = sector_returns.loc[common_index]
+                            
+                            # Calculate beta
+                            covariance = np.cov(stock_returns_aligned, sector_returns_aligned)[0, 1]
+                            variance = np.var(sector_returns_aligned)
+                            beta = covariance / variance if variance != 0 else 1.0
+                        else:
+                            beta = 1.0
+                    else:
+                        beta = 1.0
+                    
+                    return {
+                        'sector': sector,
+                        'industry': industry,
+                        'stock_return': stock_return,
+                        'sector_return': sector_return,
+                        'outperformance': relative_strength,
+                        'relative_strength': 'OUTPERFORMING' if relative_strength > 5 else 'UNDERPERFORMING' if relative_strength < -5 else 'IN-LINE',
+                        'beta': beta,
+                        'risk_category': 'High Beta' if beta > 1.3 else 'Low Beta' if beta < 0.7 else 'Market Beta'
+                    }
         except:
             pass
         
+        return None
+    
+    def get_company_info(self):
+        """Get comprehensive company fundamental information"""
+        info = {}
+        try:
+            ticker_info = self.ticker.info
+            
+            # Basic info
+            info['name'] = ticker_info.get('longName', self.symbol)
+            info['sector'] = ticker_info.get('sector', 'N/A')
+            info['industry'] = ticker_info.get('industry', 'N/A')
+            
+            # Financial metrics
+            market_cap = ticker_info.get('marketCap', 0)
+            info['market_cap'] = market_cap
+            info['market_cap_formatted'] = self.format_market_cap(market_cap)
+            
+            info['pe_ratio'] = ticker_info.get('trailingPE', 'N/A')
+            info['forward_pe'] = ticker_info.get('forwardPE', 'N/A')
+            info['pb_ratio'] = ticker_info.get('priceToBook', 'N/A')
+            info['peg_ratio'] = ticker_info.get('pegRatio', 'N/A')
+            
+            # Profitability
+            info['roe'] = ticker_info.get('returnOnEquity', 'N/A')
+            info['roa'] = ticker_info.get('returnOnAssets', 'N/A')
+            info['profit_margin'] = ticker_info.get('profitMargins', 'N/A')
+            
+            # Growth
+            info['revenue_growth'] = ticker_info.get('revenueGrowth', 'N/A')
+            info['earnings_growth'] = ticker_info.get('earningsGrowth', 'N/A')
+            
+            # Dividends
+            div_yield = ticker_info.get('dividendYield', 0)
+            info['dividend_yield'] = div_yield * 100 if div_yield else 0
+            info['payout_ratio'] = ticker_info.get('payoutRatio', 'N/A')
+            
+            # Valuation
+            info['eps'] = ticker_info.get('trailingEps', 'N/A')
+            info['forward_eps'] = ticker_info.get('forwardEps', 'N/A')
+            info['book_value'] = ticker_info.get('bookValue', 'N/A')
+            
+            # Price information
+            info['52w_high'] = ticker_info.get('fiftyTwoWeekHigh', 0)
+            info['52w_low'] = ticker_info.get('fiftyTwoWeekLow', 0)
+            info['beta'] = ticker_info.get('beta', 1.0)
+            
+            # Additional metrics
+            info['debt_to_equity'] = ticker_info.get('debtToEquity', 'N/A')
+            info['current_ratio'] = ticker_info.get('currentRatio', 'N/A')
+            info['quick_ratio'] = ticker_info.get('quickRatio', 'N/A')
+            
+            # Institutional info
+            info['held_by_institutions'] = ticker_info.get('heldPercentInstitutions', 'N/A')
+            info['short_ratio'] = ticker_info.get('shortRatio', 'N/A')
+            
+            # Description
+            info['description'] = ticker_info.get('longBusinessSummary', 'No description available.')
+            
+        except Exception as e:
+            st.warning(f"Could not fetch complete company info: {str(e)}")
+        
         return info
+    
+    def format_market_cap(self, market_cap):
+        """Format market cap to readable string"""
+        if market_cap >= 1e12:
+            return f"₹{market_cap/1e12:.2f} Lakh Cr"
+        elif market_cap >= 1e10:
+            return f"₹{market_cap/1e10:.2f} Cr"
+        elif market_cap >= 1e7:
+            return f"₹{market_cap/1e7:.2f} Lakh"
+        else:
+            return f"₹{market_cap:,.0f}"
 
 def create_candlestick_chart(analyzer):
-    """Create advanced candlestick chart with indicators"""
+    """Create advanced candlestick chart with multiple indicators"""
     df = analyzer.data.tail(100)
     
+    # Create subplots
     fig = make_subplots(
-        rows=4, cols=1,
+        rows=5, cols=1,
         shared_xaxes=True,
         vertical_spacing=0.03,
-        row_heights=[0.5, 0.15, 0.15, 0.2],
-        subplot_titles=('Price Action with Indicators', 'MACD', 'RSI', 'Volume Profile')
+        row_heights=[0.35, 0.15, 0.15, 0.15, 0.2],
+        subplot_titles=('Price Action with Indicators', 'MACD', 'RSI', 'Stochastic', 'Volume Profile')
     )
     
     # Candlestick
@@ -585,177 +1536,364 @@ def create_candlestick_chart(analyzer):
             high=df['High'],
             low=df['Low'],
             close=df['Close'],
-            name='OHLC'
+            name='OHLC',
+            increasing_line_color='#26a69a',
+            decreasing_line_color='#ef5350'
         ),
         row=1, col=1
     )
     
     # Moving Averages
-    fig.add_trace(go.Scatter(x=df.index, y=df['SMA_20'], name='SMA 20', line=dict(color='orange', width=1)), row=1, col=1)
-    fig.add_trace(go.Scatter(x=df.index, y=df['SMA_50'], name='SMA 50', line=dict(color='blue', width=1)), row=1, col=1)
-    fig.add_trace(go.Scatter(x=df.index, y=df['SMA_200'], name='SMA 200', line=dict(color='red', width=2)), row=1, col=1)
-    fig.add_trace(go.Scatter(x=df.index, y=df['EMA_10'], name='EMA 10', line=dict(color='green', width=1, dash='dash')), row=1, col=1)
+    fig.add_trace(go.Scatter(x=df.index, y=df['SMA_20'], name='SMA 20', 
+                            line=dict(color='orange', width=1.5)), row=1, col=1)
+    fig.add_trace(go.Scatter(x=df.index, y=df['SMA_50'], name='SMA 50', 
+                            line=dict(color='blue', width=1.5)), row=1, col=1)
+    fig.add_trace(go.Scatter(x=df.index, y=df['SMA_200'], name='SMA 200', 
+                            line=dict(color='red', width=2)), row=1, col=1)
+    
+    # Exponential Moving Averages
+    fig.add_trace(go.Scatter(x=df.index, y=df['EMA_8'], name='EMA 8', 
+                            line=dict(color='purple', width=1, dash='dash')), row=1, col=1)
+    fig.add_trace(go.Scatter(x=df.index, y=df['EMA_21'], name='EMA 21', 
+                            line=dict(color='green', width=1, dash='dash')), row=1, col=1)
+    fig.add_trace(go.Scatter(x=df.index, y=df['EMA_55'], name='EMA 55', 
+                            line=dict(color='brown', width=1, dash='dash')), row=1, col=1)
     
     # Bollinger Bands
-    fig.add_trace(go.Scatter(x=df.index, y=df['BB_High'], name='BB High', line=dict(color='gray', width=1, dash='dot')), row=1, col=1)
-    fig.add_trace(go.Scatter(x=df.index, y=df['BB_Low'], name='BB Low', line=dict(color='gray', width=1, dash='dot')), row=1, col=1)
+    fig.add_trace(go.Scatter(x=df.index, y=df['BB_Upper'], name='BB Upper', 
+                            line=dict(color='gray', width=1, dash='dot'), fillcolor='rgba(128,128,128,0.2)',
+                            fill='tonexty'), row=1, col=1)
+    fig.add_trace(go.Scatter(x=df.index, y=df['BB_Lower'], name='BB Lower', 
+                            line=dict(color='gray', width=1, dash='dot'), fill='tonexty'), row=1, col=1)
     
     # VWAP
-    fig.add_trace(go.Scatter(x=df.index, y=df['VWAP'], name='VWAP', line=dict(color='purple', width=1, dash='dot')), row=1, col=1)
+    fig.add_trace(go.Scatter(x=df.index, y=df['VWAP'], name='VWAP', 
+                            line=dict(color='magenta', width=1.5, dash='dashdot')), row=1, col=1)
     
     # MACD
-    fig.add_trace(go.Scatter(x=df.index, y=df['MACD'], name='MACD', line=dict(color='blue', width=1)), row=2, col=1)
-    fig.add_trace(go.Scatter(x=df.index, y=df['MACD_Signal'], name='Signal', line=dict(color='red', width=1)), row=2, col=1)
+    fig.add_trace(go.Scatter(x=df.index, y=df['MACD'], name='MACD', 
+                            line=dict(color='blue', width=2)), row=2, col=1)
+    fig.add_trace(go.Scatter(x=df.index, y=df['MACD_Signal'], name='Signal', 
+                            line=dict(color='red', width=1.5)), row=2, col=1)
     
     # MACD Histogram
-    colors = ['green' if val >= 0 else 'red' for val in df['MACD_Hist']]
-    fig.add_trace(go.Bar(x=df.index, y=df['MACD_Hist'], name='MACD Hist', marker_color=colors), row=2, col=1)
+    colors = ['#26a69a' if val >= 0 else '#ef5350' for val in df['MACD_Hist']]
+    fig.add_trace(go.Bar(x=df.index, y=df['MACD_Hist'], name='MACD Hist', 
+                        marker_color=colors, opacity=0.6), row=2, col=1)
     
     # RSI
-    fig.add_trace(go.Scatter(x=df.index, y=df['RSI'], name='RSI', line=dict(color='purple', width=2)), row=3, col=1)
+    fig.add_trace(go.Scatter(x=df.index, y=df['RSI_14'], name='RSI 14', 
+                            line=dict(color='purple', width=2)), row=3, col=1)
     fig.add_hline(y=70, line_dash="dash", line_color="red", row=3, col=1)
     fig.add_hline(y=30, line_dash="dash", line_color="green", row=3, col=1)
+    fig.add_hrect(y0=30, y1=70, line_width=0, fillcolor="gray", opacity=0.1, row=3, col=1)
+    
+    # Stochastic
+    fig.add_trace(go.Scatter(x=df.index, y=df['Stoch_K'], name='Stoch %K', 
+                            line=dict(color='blue', width=2)), row=4, col=1)
+    fig.add_trace(go.Scatter(x=df.index, y=df['Stoch_D'], name='Stoch %D', 
+                            line=dict(color='red', width=1.5)), row=4, col=1)
+    fig.add_hline(y=80, line_dash="dash", line_color="red", row=4, col=1)
+    fig.add_hline(y=20, line_dash="dash", line_color="green", row=4, col=1)
     
     # Volume
-    colors_vol = ['green' if df['Close'].iloc[i] >= df['Open'].iloc[i] else 'red' for i in range(len(df))]
-    fig.add_trace(go.Bar(x=df.index, y=df['Volume'], name='Volume', marker_color=colors_vol), row=4, col=1)
-    fig.add_trace(go.Scatter(x=df.index, y=df['Volume_SMA'], name='Vol SMA', line=dict(color='orange', width=2)), row=4, col=1)
+    colors_vol = ['#26a69a' if df['Close'].iloc[i] >= df['Open'].iloc[i] else '#ef5350' 
+                  for i in range(len(df))]
+    fig.add_trace(go.Bar(x=df.index, y=df['Volume'], name='Volume', 
+                        marker_color=colors_vol, opacity=0.7), row=5, col=1)
+    fig.add_trace(go.Scatter(x=df.index, y=df['Volume_SMA_20'], name='Vol SMA 20', 
+                            line=dict(color='orange', width=1.5)), row=5, col=1)
     
     # Update layout
     fig.update_layout(
-        title=f'{analyzer.symbol} - Master Trader Analysis',
+        title=f'{analyzer.symbol} - Advanced Technical Analysis',
         xaxis_rangeslider_visible=False,
-        height=1200,
+        height=1400,
         showlegend=True,
-        hovermode='x unified'
+        hovermode='x unified',
+        template='plotly_white',
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1
+        )
     )
     
-    fig.update_xaxes(title_text="Date", row=4, col=1)
+    fig.update_xaxes(title_text="Date", row=5, col=1)
     fig.update_yaxes(title_text="Price", row=1, col=1)
     fig.update_yaxes(title_text="MACD", row=2, col=1)
     fig.update_yaxes(title_text="RSI", row=3, col=1)
-    fig.update_yaxes(title_text="Volume", row=4, col=1)
+    fig.update_yaxes(title_text="Stochastic", row=4, col=1)
+    fig.update_yaxes(title_text="Volume", row=5, col=1)
     
     return fig
 
 def create_volume_profile_chart(analyzer):
-    """Create volume profile chart based on Image 1"""
+    """Create comprehensive volume profile chart"""
     vp = analyzer.detect_volume_profile()
     
-    fig = go.Figure()
+    if not vp:
+        return go.Figure()
     
-    # Horizontal volume bars
+    fig = make_subplots(
+        rows=1, cols=2,
+        subplot_titles=('Volume Profile', 'Value Area Distribution'),
+        column_widths=[0.7, 0.3]
+    )
+    
+    # Volume Profile Bars
+    bin_centers = (vp['price_bins'][:-1] + vp['price_bins'][1:]) / 2
+    
     fig.add_trace(go.Bar(
-        y=(vp['price_bins'][:-1] + vp['price_bins'][1:]) / 2,
+        y=bin_centers,
         x=vp['volume_distribution'],
         orientation='h',
-        name='Volume at Price',
-        marker=dict(color='lightblue', line=dict(color='blue', width=1))
-    ))
+        name='Volume',
+        marker=dict(
+            color=vp['volume_distribution'],
+            colorscale='Viridis',
+            showscale=True,
+            colorbar=dict(title="Volume")
+        )
+    ), row=1, col=1)
     
     # Point of Control
-    fig.add_hline(y=vp['poc_price'], line_dash="solid", line_color="black", 
-                  annotation_text="POC", line_width=3)
+    fig.add_hline(y=vp['poc_price'], line_dash="solid", line_color="red", 
+                  line_width=3, row=1, col=1,
+                  annotation_text=f"POC: ₹{vp['poc_price']:.2f}")
     
     # Value Area
     fig.add_hrect(y0=vp['value_area_low'], y1=vp['value_area_high'], 
                   line_width=0, fillcolor="red", opacity=0.2,
-                  annotation_text="Value Area", annotation_position="right")
+                  annotation_text=f"Value Area ({vp['value_area_percentage']:.1f}%)",
+                  annotation_position="right", row=1, col=1)
     
-    # High Volume Nodes
-    for hvn in vp['high_volume_nodes'][:3]:
-        fig.add_hline(y=hvn, line_dash="dash", line_color="green", 
-                      annotation_text="HVN", line_width=1)
+    # Current Price
+    current_price = analyzer.data['Close'].iloc[-1]
+    fig.add_hline(y=current_price, line_dash="dash", line_color="green",
+                  line_width=2, row=1, col=1,
+                  annotation_text=f"Current: ₹{current_price:.2f}")
     
-    # Low Volume Nodes
-    for lvn in vp['low_volume_nodes'][:3]:
-        fig.add_hline(y=lvn, line_dash="dash", line_color="orange", 
-                      annotation_text="LVN", line_width=1)
+    # Value Distribution (Pie Chart)
+    value_labels = ['High Volume Nodes', 'Value Area', 'Low Volume Nodes']
+    
+    # Calculate percentages
+    high_volume_value = np.sum(vp['value_distribution'][vp['volume_distribution'] > 
+                                                       np.percentile(vp['volume_distribution'], 70)])
+    low_volume_value = np.sum(vp['value_distribution'][vp['volume_distribution'] < 
+                                                      np.percentile(vp['volume_distribution'], 30)])
+    other_value = np.sum(vp['value_distribution']) - high_volume_value - low_volume_value
+    
+    values = [high_volume_value, other_value, low_volume_value]
+    
+    fig.add_trace(go.Pie(
+        labels=value_labels,
+        values=values,
+        hole=0.4,
+        marker=dict(colors=['#00cc96', '#636efa', '#ef553b']),
+        textinfo='percent+label'
+    ), row=1, col=2)
     
     fig.update_layout(
         title='Volume Profile Analysis',
-        xaxis_title='Volume',
-        yaxis_title='Price',
         height=600,
-        showlegend=True
+        showlegend=True,
+        template='plotly_white'
     )
     
+    fig.update_xaxes(title_text='Volume', row=1, col=1)
+    fig.update_yaxes(title_text='Price', row=1, col=1)
+    
     return fig
+
+def create_pattern_summary_card(pattern):
+    """Create a styled card for pattern display"""
+    if pattern['signal'] == 'BULLISH':
+        color_class = "bullish"
+        icon = "📈"
+    elif pattern['signal'] == 'BEARISH':
+        color_class = "bearish"
+        icon = "📉"
+    else:
+        color_class = "neutral"
+        icon = "⚖️"
+    
+    card_html = f"""
+    <div class="pattern-card">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div>
+                <h3 style="margin: 0; color: white;">{icon} {pattern['pattern']}</h3>
+                <p style="margin: 5px 0; color: #f0f0f0;">Signal: <span class="{color_class}">{pattern['signal']}</span></p>
+            </div>
+            <div style="text-align: right;">
+                <p style="margin: 0; color: #f0f0f0;">Confidence: {pattern['confidence']}</p>
+                <p style="margin: 0; color: #f0f0f0;">Score: {pattern['score']:.2f}</p>
+            </div>
+        </div>
+        <hr style="border-color: rgba(255,255,255,0.2); margin: 10px 0;">
+        <p style="margin: 5px 0; color: #f0f0f0;"><strong>Description:</strong> {pattern['description']}</p>
+        <p style="margin: 5px 0; color: #f0f0f0;"><strong>Action:</strong> {pattern['action']}</p>
+    </div>
+    """
+    return card_html
+
+def export_analysis_report(analyzer, patterns, risk_params, signal_info):
+    """Export analysis to CSV format"""
+    import io
+    
+    # Create summary DataFrame
+    summary_data = {
+        'Symbol': [analyzer.symbol],
+        'Analysis Date': [datetime.now().strftime('%Y-%m-%d %H:%M:%S')],
+        'Current Price': [analyzer.data['Close'].iloc[-1] if analyzer.data is not None else 'N/A'],
+        'Trading Signal': [signal_info[0]],
+        'Signal Score': [signal_info[2]],
+        'Patterns Detected': [', '.join([p['pattern'] for p in patterns]) if patterns else 'None'],
+        'Stop Loss': [risk_params.get('stop_loss', 'N/A')],
+        'Position Size': [risk_params.get('position_size', 'N/A')],
+        'Risk/Reward 1:': [risk_params.get('risk_reward_ratios', {}).get('target_1', 'N/A')],
+        'Portfolio Risk %': [risk_params.get('portfolio_risk_percent', 'N/A')],
+        'ATR %': [risk_params.get('atr_percent', 'N/A')],
+        'Max Drawdown %': [risk_params.get('max_drawdown', 'N/A')]
+    }
+    
+    df = pd.DataFrame(summary_data)
+    
+    # Convert to CSV
+    csv_buffer = io.StringIO()
+    df.to_csv(csv_buffer, index=False)
+    csv_content = csv_buffer.getvalue()
+    
+    return csv_content
 
 def main():
     """Main Streamlit application"""
     
-    st.markdown('<div class="main-header">🎯 Indian Equity Market Analyzer</div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-header">🎯 Indian Equity Market Analyzer Pro</div>', unsafe_allow_html=True)
     st.markdown('<p style="text-align: center; color: gray;">Master Trader Grade Analysis - Dan Zanger & Qullamaggie Strategies</p>', unsafe_allow_html=True)
     
     # Sidebar
     with st.sidebar:
-        st.header("📊 Analysis Settings")
+        st.markdown('<div class="stock-ticker">📊</div>', unsafe_allow_html=True)
         
+        st.header("Analysis Settings")
+        
+        # Stock selection
         symbol = st.text_input(
-            "Enter Stock Symbol (NSE)",
+            "Enter Stock Symbol",
             value="RELIANCE",
-            help="Enter NSE symbol without .NS suffix (e.g., RELIANCE, TCS, INFY)"
+            help="Enter NSE symbol (e.g., RELIANCE, TCS, HDFCBANK)"
         )
         
+        # Analysis period
         period = st.selectbox(
             "Analysis Period",
-            options=['1mo', '3mo', '6mo', '1y', '2y', '5y'],
+            options=['1mo', '3mo', '6mo', '1y', '2y', '5y', 'max'],
             index=3
         )
         
-        analyze_btn = st.button("🔍 Analyze Stock", type="primary", use_container_width=True)
+        # Portfolio size for risk management
+        portfolio_value = st.number_input(
+            "Portfolio Value (₹)",
+            min_value=10000,
+            max_value=10000000,
+            value=100000,
+            step=10000,
+            help="Used for position sizing calculations"
+        )
+        
+        # Analysis options
+        st.markdown("---")
+        st.markdown("### Analysis Options")
+        
+        show_advanced = st.checkbox("Show Advanced Analysis", value=True)
+        show_patterns = st.checkbox("Show Pattern Detection", value=True)
+        show_risk = st.checkbox("Show Risk Management", value=True)
+        show_market = st.checkbox("Show Market Context", value=True)
+        
+        # Analyze button
+        col1, col2 = st.columns(2)
+        with col1:
+            analyze_btn = st.button("🔍 Analyze", type="primary", use_container_width=True)
+        with col2:
+            clear_btn = st.button("🔄 Clear", use_container_width=True)
+        
+        if clear_btn:
+            st.rerun()
         
         st.markdown("---")
-        st.markdown("### 📚 Pattern Detection")
-        st.markdown("""
-        - ✅ Cup and Handle
-        - ✅ High Tight Flag
-        - ✅ Ascending Triangle
-        - ✅ Volume Profile
-        - ✅ Episodic Pivot
-        - ✅ Parabolic Patterns
-        """)
+        st.markdown("### 📚 Pattern Library")
+        
+        with st.expander("Dan Zanger Patterns"):
+            st.markdown("""
+            - **Cup and Handle**: Most reliable bullish pattern
+            - **High Tight Flag**: Explosive breakout pattern
+            - **Ascending Triangle**: Bullish continuation
+            - **Flat Base**: Consolidation before breakout
+            - **Falling Wedge**: Bullish reversal
+            """)
+        
+        with st.expander("Qullamaggie Patterns"):
+            st.markdown("""
+            - **Breakout**: ORH entry with volume
+            - **Episodic Pivot**: Gap and go momentum
+            - **Parabolic Short**: Reversion to mean setup
+            - **Gap and Go**: Continuation pattern
+            - **ABCD Pattern**: Harmonic trading
+            """)
         
         st.markdown("---")
-        st.markdown("### 🎓 Trading Philosophy")
-        st.markdown("""
-        **Dan Zanger's Rules:**
-        - Volume is everything
-        - Focus on liquid leaders
-        - 8% absolute sell rule
+        st.markdown("### 🎓 Trading Rules")
         
-        **Qullamaggie's Rules:**
-        - Extreme discipline
-        - Market leaders only
-        - Never risk >1% per trade
+        st.info("""
+        **Zanger's Golden Rules:**
+        1. Volume confirms every breakout
+        2. 8% absolute stop loss
+        3. Focus on liquid leaders
+        4. Patience in pattern formation
+        
+        **Qullamaggie's Discipline:**
+        1. Never risk >1% per trade
+        2. Trade market leaders only
+        3. ORH entry for momentum
+        4. Quick profits, trail winners
         """)
     
-    if analyze_btn:
+    if analyze_btn and symbol:
         with st.spinner(f'🔄 Analyzing {symbol}...'):
-            analyzer = IndianEquityAnalyzer(symbol, period)
+            # Fetch data with caching
+            analyzer = analyzer.fetch_data(symbol, period)
             
-            if analyzer.fetch_data():
-                # Company Information
+            if analyzer:
+                # Company Information Section
                 st.markdown('<div class="sub-header">🏢 Company Overview</div>', unsafe_allow_html=True)
                 
                 info = analyzer.get_company_info()
+                company_info = st.container()
                 
-                col1, col2, col3, col4 = st.columns(4)
-                with col1:
-                    st.metric("Company", info.get('name', 'N/A'))
-                    st.metric("Sector", info.get('sector', 'N/A'))
-                with col2:
-                    market_cap = info.get('market_cap', 0)
-                    st.metric("Market Cap", f"₹{market_cap/10000000:.2f} Cr" if market_cap else 'N/A')
-                    st.metric("Industry", info.get('industry', 'N/A'))
-                with col3:
-                    st.metric("P/E Ratio", f"{info.get('pe_ratio', 'N/A'):.2f}" if isinstance(info.get('pe_ratio'), (int, float)) else 'N/A')
-                    st.metric("P/B Ratio", f"{info.get('pb_ratio', 'N/A'):.2f}" if isinstance(info.get('pb_ratio'), (int, float)) else 'N/A')
-                with col4:
-                    st.metric("Beta", f"{info.get('beta', 'N/A'):.2f}" if isinstance(info.get('beta'), (int, float)) else 'N/A')
-                    div_yield = info.get('dividend_yield', 0)
-                    st.metric("Div Yield", f"{div_yield*100:.2f}%" if div_yield else 'N/A')
+                with company_info:
+                    col1, col2, col3, col4 = st.columns(4)
+                    
+                    with col1:
+                        st.metric("Company", info.get('name', symbol))
+                        st.metric("Sector", info.get('sector', 'N/A'))
+                        
+                    with col2:
+                        st.metric("Market Cap", info.get('market_cap_formatted', 'N/A'))
+                        st.metric("Industry", info.get('industry', 'N/A'))
+                        
+                    with col3:
+                        pe = info.get('pe_ratio', 'N/A')
+                        st.metric("P/E Ratio", f"{pe:.2f}" if isinstance(pe, (int, float)) else 'N/A')
+                        st.metric("P/B Ratio", f"{info.get('pb_ratio', 'N/A'):.2f}" 
+                                 if isinstance(info.get('pb_ratio'), (int, float)) else 'N/A')
+                        
+                    with col4:
+                        st.metric("Beta", f"{info.get('beta', 1.0):.2f}")
+                        div_yield = info.get('dividend_yield', 0)
+                        st.metric("Div Yield", f"{div_yield:.2f}%" if div_yield else '0.00%')
                 
                 # Current Price Information
                 current = analyzer.data.iloc[-1]
@@ -763,162 +1901,465 @@ def main():
                 change = current['Close'] - prev['Close']
                 change_pct = (change / prev['Close']) * 100
                 
-                col1, col2, col3, col4, col5 = st.columns(5)
-                with col1:
-                    st.metric("Current Price", f"₹{current['Close']:.2f}", f"{change:.2f} ({change_pct:.2f}%)")
-                with col2:
+                st.markdown('<div class="sub-header">📊 Current Market Data</div>', unsafe_allow_html=True)
+                
+                price_cols = st.columns(5)
+                with price_cols[0]:
+                    st.metric(
+                        "Current Price",
+                        f"₹{current['Close']:.2f}",
+                        f"{change:+.2f} ({change_pct:+.2f}%)",
+                        delta_color="normal" if change >= 0 else "inverse"
+                    )
+                with price_cols[1]:
                     st.metric("Day High", f"₹{current['High']:.2f}")
-                with col3:
+                with price_cols[2]:
                     st.metric("Day Low", f"₹{current['Low']:.2f}")
-                with col4:
+                with price_cols[3]:
                     st.metric("52W High", f"₹{info.get('52w_high', 0):.2f}")
-                with col5:
+                with price_cols[4]:
                     st.metric("52W Low", f"₹{info.get('52w_low', 0):.2f}")
                 
                 # Trading Signal
-                st.markdown('<div class="sub-header">🎯 Trading Signal</div>', unsafe_allow_html=True)
+                st.markdown('<div class="sub-header">🎯 Trading Signal & Analysis</div>', unsafe_allow_html=True)
                 
-                overall, signals, score = analyzer.get_trading_signal()
+                overall, signals, score, color = analyzer.get_trading_signal()
                 
-                col1, col2 = st.columns([1, 2])
-                with col1:
-                    st.markdown(f"### {overall}")
-                    st.markdown(f"**Signal Strength: {score}/7**")
-                with col2:
-                    for signal in signals:
-                        st.markdown(signal)
+                signal_cols = st.columns([1, 2])
+                with signal_cols[0]:
+                    st.markdown(f"""
+                    <div style="background-color: {color}; padding: 20px; border-radius: 10px; text-align: center;">
+                        <h2 style="margin: 0; color: white;">{overall}</h2>
+                        <p style="margin: 5px 0; font-size: 24px; color: white;">Score: {score:.1f}/100</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    # Gauge chart for signal strength
+                    fig_gauge = go.Figure(go.Indicator(
+                        mode="gauge+number",
+                        value=score,
+                        domain={'x': [0, 1], 'y': [0, 1]},
+                        title={'text': "Signal Strength"},
+                        gauge={
+                            'axis': {'range': [-50, 100]},
+                            'bar': {'color': color},
+                            'steps': [
+                                {'range': [-50, 0], 'color': "red"},
+                                {'range': [0, 50], 'color': "yellow"},
+                                {'range': [50, 100], 'color': "green"}
+                            ],
+                            'threshold': {
+                                'line': {'color': "black", 'width': 4},
+                                'thickness': 0.75,
+                                'value': 50
+                            }
+                        }
+                    ))
+                    
+                    fig_gauge.update_layout(height=200, margin=dict(t=30, b=10))
+                    st.plotly_chart(fig_gauge, use_container_width=True)
+                
+                with signal_cols[1]:
+                    with st.expander("📋 Detailed Analysis Signals", expanded=True):
+                        for signal in signals:
+                            st.markdown(f"• {signal}")
+                
+                # Pattern Detection
+                if show_patterns:
+                    st.markdown('<div class="sub-header">📈 Pattern Detection</div>', unsafe_allow_html=True)
+                    
+                    pattern_tabs = st.tabs(["Dan Zanger Patterns", "Qullamaggie Patterns", "All Patterns"])
+                    
+                    with pattern_tabs[0]:
+                        zanger_patterns = analyzer.detect_chart_patterns()
+                        if zanger_patterns:
+                            for pattern in zanger_patterns:
+                                st.markdown(create_pattern_summary_card(pattern), unsafe_allow_html=True)
+                                with st.expander("View Rules & Details"):
+                                    st.markdown("**Rules to Follow:**")
+                                    for rule in pattern.get('rules', []):
+                                        st.markdown(f"• {rule}")
+                        else:
+                            st.info("No Dan Zanger patterns detected in current timeframe.")
+                    
+                    with pattern_tabs[1]:
+                        swing_patterns = analyzer.detect_swing_patterns()
+                        if swing_patterns:
+                            for pattern in swing_patterns:
+                                st.markdown(create_pattern_summary_card(pattern), unsafe_allow_html=True)
+                                with st.expander("View Rules & Details"):
+                                    st.markdown("**Rules to Follow:**")
+                                    for rule in pattern.get('rules', []):
+                                        st.markdown(f"• {rule}")
+                        else:
+                            st.info("No Qullamaggie swing patterns detected in current timeframe.")
+                    
+                    with pattern_tabs[2]:
+                        all_patterns = zanger_patterns + swing_patterns
+                        if all_patterns:
+                            # Create pattern summary table
+                            pattern_df = pd.DataFrame([{
+                                'Pattern': p['pattern'],
+                                'Signal': p['signal'],
+                                'Confidence': p['confidence'],
+                                'Score': p['score'],
+                                'Description': p['description']
+                            } for p in all_patterns])
+                            
+                            st.dataframe(
+                                pattern_df,
+                                use_container_width=True,
+                                column_config={
+                                    "Pattern": st.column_config.TextColumn("Pattern"),
+                                    "Signal": st.column_config.TextColumn("Signal"),
+                                    "Confidence": st.column_config.TextColumn("Confidence"),
+                                    "Score": st.column_config.ProgressColumn(
+                                        "Score",
+                                        format="%.2f",
+                                        min_value=0,
+                                        max_value=1.0
+                                    ),
+                                    "Description": st.column_config.TextColumn("Description", width="large")
+                                }
+                            )
+                        else:
+                            st.warning("No trading patterns detected.")
                 
                 # Risk Management
-                st.markdown('<div class="sub-header">⚠️ Risk Management Parameters</div>', unsafe_allow_html=True)
+                if show_risk:
+                    st.markdown('<div class="sub-header">⚠️ Advanced Risk Management</div>', unsafe_allow_html=True)
+                    
+                    risk_mgmt = analyzer.get_risk_management(portfolio_value)
+                    
+                    risk_cols = st.columns(3)
+                    
+                    with risk_cols[0]:
+                        st.markdown("### Entry & Stops")
+                        st.metric("Entry Price", f"₹{risk_mgmt['entry_price']:.2f}")
+                        
+                        # Stop loss levels
+                        with st.expander("Stop Loss Levels"):
+                            for level_name, stop_price in risk_mgmt['stop_loss_levels'].items():
+                                stop_percent = ((risk_mgmt['entry_price'] - stop_price) / risk_mgmt['entry_price']) * 100
+                                st.metric(
+                                    f"{level_name.title()}",
+                                    f"₹{stop_price:.2f}",
+                                    f"-{stop_percent:.1f}%"
+                                )
+                    
+                    with risk_cols[1]:
+                        st.markdown("### Position Sizing")
+                        st.metric("Position Size", f"{risk_mgmt['position_size']:,} shares")
+                        st.metric("Position Value", f"₹{risk_mgmt['position_value']:,.2f}")
+                        st.metric("Portfolio Risk", f"{risk_mgmt['portfolio_risk_percent']:.2f}%")
+                        st.metric("Max Drawdown", f"{risk_mgmt['max_drawdown']:.1f}%")
+                    
+                    with risk_cols[2]:
+                        st.markdown("### Profit Targets")
+                        for target_name, target_price in risk_mgmt['profit_targets'].items():
+                            if 'target_' in target_name:
+                                target_return = ((target_price - risk_mgmt['entry_price']) / risk_mgmt['entry_price']) * 100
+                                rr_ratio = risk_mgmt['risk_reward_ratios'].get(target_name, 0)
+                                
+                                st.metric(
+                                    f"{target_name.replace('_', ' ').title()}",
+                                    f"₹{target_price:.2f}",
+                                    f"+{target_return:.1f}% (R:R 1:{rr_ratio:.1f})"
+                                )
+                    
+                    # Risk/Reward Summary
+                    st.markdown("#### Risk/Reward Analysis")
+                    rr_df = pd.DataFrame([
+                        {
+                            'Target': target_name.replace('_', ' ').title(),
+                            'Price': f"₹{target_price:.2f}",
+                            'Return %': ((target_price - risk_mgmt['entry_price']) / risk_mgmt['entry_price']) * 100,
+                            'Risk/Reward': f"1:{rr_ratio:.1f}"
+                        }
+                        for target_name, target_price in risk_mgmt['profit_targets'].items()
+                        if 'target_' in target_name
+                        for rr_ratio in [risk_mgmt['risk_reward_ratios'].get(target_name, 0)]
+                    ])
+                    
+                    st.dataframe(rr_df, use_container_width=True, hide_index=True)
                 
-                risk_mgmt = analyzer.get_risk_management()
+                # Market Context
+                if show_market:
+                    st.markdown('<div class="sub-header">🌐 Market Context Analysis</div>', unsafe_allow_html=True)
+                    
+                    market_context = analyzer.get_market_context()
+                    sector_analysis = analyzer.get_sector_analysis()
+                    
+                    market_cols = st.columns(3)
+                    
+                    with market_cols[0]:
+                        st.markdown("### Nifty 50")
+                        if market_context:
+                            st.metric("Nifty Level", f"₹{market_context['nifty_level']:.2f}")
+                            st.metric("Nifty Trend", market_context['nifty_trend'])
+                            st.metric("VIX Level", f"{market_context.get('vix', 'N/A'):.2f}" 
+                                     if market_context.get('vix') else 'N/A')
+                            st.metric("Market Condition", market_context.get('market_condition', 'N/A'))
+                    
+                    with market_cols[1]:
+                        st.markdown("### Sector Analysis")
+                        if sector_analysis:
+                            st.metric("Sector", sector_analysis['sector'])
+                            st.metric("Stock Return", f"{sector_analysis['stock_return']:.1f}%")
+                            st.metric("Sector Return", f"{sector_analysis['sector_return']:.1f}%")
+                            st.metric("Relative Strength", sector_analysis['relative_strength'])
+                    
+                    with market_cols[2]:
+                        st.markdown("### Risk Metrics")
+                        if sector_analysis:
+                            st.metric("Beta", f"{sector_analysis['beta']:.2f}")
+                            st.metric("Risk Category", sector_analysis['risk_category'])
+                        st.metric("Outperformance", f"{sector_analysis.get('outperformance', 0):.1f}%" 
+                                 if sector_analysis else 'N/A')
+                
+                # Advanced Technical Charts
+                if show_advanced:
+                    st.markdown('<div class="sub-header">📊 Advanced Technical Charts</div>', unsafe_allow_html=True)
+                    
+                    chart_tabs = st.tabs(["Price Action & Indicators", "Volume Profile", "Market Structure"])
+                    
+                    with chart_tabs[0]:
+                        fig_candlestick = create_candlestick_chart(analyzer)
+                        st.plotly_chart(fig_candlestick, use_container_width=True)
+                    
+                    with chart_tabs[1]:
+                        fig_volume_profile = create_volume_profile_chart(analyzer)
+                        st.plotly_chart(fig_volume_profile, use_container_width=True)
+                        
+                        # Volume Profile Metrics
+                        vp = analyzer.detect_volume_profile()
+                        if vp:
+                            vp_cols = st.columns(4)
+                            with vp_cols[0]:
+                                st.metric("Point of Control", f"₹{vp['poc_price']:.2f}")
+                            with vp_cols[1]:
+                                st.metric("Value Area High", f"₹{vp['value_area_high']:.2f}")
+                            with vp_cols[2]:
+                                st.metric("Value Area Low", f"₹{vp['value_area_low']:.2f}")
+                            with vp_cols[3]:
+                                st.metric("Value Area %", f"{vp['value_area_percentage']:.1f}%")
+                    
+                    with chart_tabs[2]:
+                        # Create market structure analysis
+                        st.info("Market structure analysis shows support/resistance levels and key price zones.")
+                        
+                        # Simple support/resistance levels
+                        df = analyzer.data.tail(100)
+                        support_levels = df['Low'].rolling(20).min().dropna().unique()[-3:]
+                        resistance_levels = df['High'].rolling(20).max().dropna().unique()[-3:]
+                        
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            st.markdown("#### Key Support Levels")
+                            for i, level in enumerate(sorted(support_levels, reverse=True)[:3], 1):
+                                st.metric(f"Support {i}", f"₹{level:.2f}")
+                        
+                        with col2:
+                            st.markdown("#### Key Resistance Levels")
+                            for i, level in enumerate(sorted(resistance_levels)[:3], 1):
+                                st.metric(f"Resistance {i}", f"₹{level:.2f}")
+                
+                # Technical Indicators Summary
+                st.markdown('<div class="sub-header">📋 Technical Indicators Summary</div>', unsafe_allow_html=True)
+                
+                current = analyzer.data.iloc[-1]
+                
+                indicators = {
+                    'Trend': [
+                        ('SMA 20', current['SMA_20'], 'Above' if current['Close'] > current['SMA_20'] else 'Below'),
+                        ('SMA 50', current['SMA_50'], 'Above' if current['Close'] > current['SMA_50'] else 'Below'),
+                        ('SMA 200', current['SMA_200'], 'Above' if current['Close'] > current['SMA_200'] else 'Below'),
+                        ('EMA Alignment', 'Bullish' if current['EMA_8'] > current['EMA_21'] > current['EMA_55'] else 'Bearish', '')
+                    ],
+                    'Momentum': [
+                        ('RSI 14', f"{current['RSI_14']:.1f}", 
+                         'Overbought' if current['RSI_14'] > 70 else 'Oversold' if current['RSI_14'] < 30 else 'Neutral'),
+                        ('MACD', f"{current['MACD']:.2f}", 
+                         'Bullish' if current['MACD'] > current['MACD_Signal'] else 'Bearish'),
+                        ('Stochastic %K', f"{current['Stoch_K']:.1f}", 
+                         'Overbought' if current['Stoch_K'] > 80 else 'Oversold' if current['Stoch_K'] < 20 else 'Neutral'),
+                        ('Williams %R', f"{current['Williams_%R']:.1f}", 
+                         'Oversold' if current['Williams_%R'] < -80 else 'Overbought' if current['Williams_%R'] > -20 else 'Neutral')
+                    ],
+                    'Volatility': [
+                        ('ATR %', f"{(current['ATR_14'] / current['Close']) * 100:.1f}%", 
+                         'High' if (current['ATR_14'] / current['Close']) > 0.03 else 'Low'),
+                        ('BB Position', f"{(current['Close'] - current['BB_Lower']) / (current['BB_Upper'] - current['BB_Lower']) * 100:.1f}%",
+                         'Upper Band' if current['Close'] > current['BB_Upper'] * 0.95 else 
+                         'Lower Band' if current['Close'] < current['BB_Lower'] * 1.05 else 'Middle'),
+                        ('Range %', f"{(df['High'].max() - df['Low'].min()) / df['Close'].mean() * 100:.1f}%", '')
+                    ],
+                    'Volume': [
+                        ('Volume Ratio', f"{current['Volume_Ratio']:.1f}x", 
+                         'High' if current['Volume_Ratio'] > 1.5 else 'Low'),
+                        ('OBV Trend', 'Up' if current['OBV'] > analyzer.data['OBV'].iloc[-20] else 'Down', ''),
+                        ('VWAP Diff', f"{(current['Close'] - current['VWAP']) / current['VWAP'] * 100:.1f}%",
+                         'Above' if current['Close'] > current['VWAP'] else 'Below')
+                    ]
+                }
+                
+                indicator_cols = st.columns(4)
+                for idx, (category, metrics) in enumerate(indicators.items()):
+                    with indicator_cols[idx]:
+                        st.markdown(f"#### {category}")
+                        for metric_name, value, interpretation in metrics:
+                            st.metric(metric_name, value, interpretation)
+                
+                # Export Functionality
+                st.markdown('<div class="sub-header">📤 Export Analysis</div>', unsafe_allow_html=True)
                 
                 col1, col2, col3 = st.columns(3)
+                
                 with col1:
-                    st.markdown("**Entry & Stop Loss**")
-                    st.metric("Entry Price", f"₹{risk_mgmt['entry_price']:.2f}")
-                    st.metric("Stop Loss", f"₹{risk_mgmt['stop_loss']:.2f}", 
-                             f"-{((risk_mgmt['entry_price'] - risk_mgmt['stop_loss'])/risk_mgmt['entry_price']*100):.2f}%")
+                    # Export to CSV
+                    csv_data = export_analysis_report(
+                        analyzer, 
+                        zanger_patterns + swing_patterns, 
+                        risk_mgmt, 
+                        (overall, signals, score)
+                    )
+                    
+                    st.download_button(
+                        label="📥 Download CSV Report",
+                        data=csv_data,
+                        file_name=f"{symbol}_analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                        mime="text/csv",
+                        use_container_width=True
+                    )
                 
                 with col2:
-                    st.markdown("**Profit Targets**")
-                    st.metric("Target 1 (15%)", f"₹{risk_mgmt['target_1']:.2f}")
-                    st.metric("Target 2 (30%)", f"₹{risk_mgmt['target_2']:.2f}")
+                    # Generate summary
+                    if st.button("📋 Generate Summary", use_container_width=True):
+                        summary = f"""
+                        ## Analysis Summary for {symbol}
+                        
+                        **Trading Signal:** {overall} (Score: {score:.1f}/100)
+                        
+                        **Key Patterns Detected:**
+                        {', '.join([p['pattern'] for p in (zanger_patterns + swing_patterns)]) if (zanger_patterns + swing_patterns) else 'None'}
+                        
+                        **Risk Management:**
+                        - Entry: ₹{risk_mgmt['entry_price']:.2f}
+                        - Stop Loss: ₹{risk_mgmt['stop_loss']:.2f}
+                        - Position Size: {risk_mgmt['position_size']:,} shares
+                        - Max Risk: {risk_mgmt['portfolio_risk_percent']:.2f}% of portfolio
+                        
+                        **Technical Overview:**
+                        - Trend: {'Bullish' if current['Close'] > current['SMA_50'] else 'Bearish'}
+                        - Momentum: {'Bullish' if current['MACD'] > current['MACD_Signal'] else 'Bearish'}
+                        - Volume: {'Strong' if current['Volume'] > current['Volume_SMA_20'] * 1.5 else 'Weak'}
+                        
+                        Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+                        """
+                        
+                        st.success("Summary generated!")
+                        st.markdown(summary)
                 
                 with col3:
-                    st.markdown("**Risk/Reward**")
-                    st.metric("R:R Target 1", f"1:{risk_mgmt['risk_reward_1']:.2f}")
-                    st.metric("R:R Target 2", f"1:{risk_mgmt['risk_reward_2']:.2f}")
-                    st.metric("Risk/Share", f"₹{risk_mgmt['risk_per_share']:.2f}")
+                    # Clear cache
+                    if st.button("🗑️ Clear Cache", use_container_width=True):
+                        st.cache_data.clear()
+                        st.rerun()
                 
-                # Chart Patterns
-                st.markdown('<div class="sub-header">📈 Chart Pattern Detection</div>', unsafe_allow_html=True)
-                
-                tab1, tab2 = st.tabs(["Dan Zanger Patterns", "Qullamaggie Patterns"])
-                
-                with tab1:
-                    zanger_patterns = analyzer.detect_chart_patterns()
-                    if zanger_patterns:
-                        for pattern in zanger_patterns:
-                            with st.expander(f"🔹 {pattern['pattern']} - {pattern['signal']}", expanded=True):
-                                st.markdown(f"**Description:** {pattern['description']}")
-                                st.markdown(f"**Action:** {pattern['action']}")
-                    else:
-                        st.info("No Dan Zanger patterns detected in current timeframe")
-                
-                with tab2:
-                    swing_patterns = analyzer.detect_swing_patterns()
-                    if swing_patterns:
-                        for pattern in swing_patterns:
-                            with st.expander(f"🔹 {pattern['pattern']} - {pattern['signal']}", expanded=True):
-                                st.markdown(f"**Description:** {pattern['description']}")
-                                st.markdown(f"**Action:** {pattern['action']}")
-                    else:
-                        st.info("No Qullamaggie swing patterns detected in current timeframe")
-                
-                # Charts
-                st.markdown('<div class="sub-header">📊 Technical Analysis Charts</div>', unsafe_allow_html=True)
-                
-                chart_tab1, chart_tab2 = st.tabs(["Price Action & Indicators", "Volume Profile"])
-                
-                with chart_tab1:
-                    fig_candlestick = create_candlestick_chart(analyzer)
-                    st.plotly_chart(fig_candlestick, use_container_width=True)
-                
-                with chart_tab2:
-                    fig_volume_profile = create_volume_profile_chart(analyzer)
-                    st.plotly_chart(fig_volume_profile, use_container_width=True)
-                    
-                    # Volume Profile Metrics
-                    vp = analyzer.detect_volume_profile()
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        st.metric("Point of Control (POC)", f"₹{vp['poc_price']:.2f}")
-                    with col2:
-                        st.metric("Value Area High", f"₹{vp['value_area_high']:.2f}")
-                    with col3:
-                        st.metric("Value Area Low", f"₹{vp['value_area_low']:.2f}")
-                
-                # Key Metrics Table
-                st.markdown('<div class="sub-header">📋 Key Technical Indicators</div>', unsafe_allow_html=True)
-                
-                metrics_df = pd.DataFrame({
-                    'Indicator': ['RSI', 'MACD', 'Signal Line', 'Stochastic %K', 'Stochastic %D', 'ATR', 'OBV'],
-                    'Current Value': [
-                        f"{current['RSI']:.2f}",
-                        f"{current['MACD']:.2f}",
-                        f"{current['MACD_Signal']:.2f}",
-                        f"{current['Stoch_K']:.2f}",
-                        f"{current['Stoch_D']:.2f}",
-                        f"{current['ATR']:.2f}",
-                        f"{current['OBV']:.0f}"
-                    ],
-                    'Interpretation': [
-                        'Overbought' if current['RSI'] > 70 else 'Oversold' if current['RSI'] < 30 else 'Neutral',
-                        'Bullish' if current['MACD'] > current['MACD_Signal'] else 'Bearish',
-                        '-',
-                        'Overbought' if current['Stoch_K'] > 80 else 'Oversold' if current['Stoch_K'] < 20 else 'Neutral',
-                        'Overbought' if current['Stoch_D'] > 80 else 'Oversold' if current['Stoch_D'] < 20 else 'Neutral',
-                        'High Volatility' if current['ATR'] > analyzer.data['ATR'].mean() * 1.5 else 'Normal',
-                        'Accumulation' if current['OBV'] > analyzer.data['OBV'].mean() else 'Distribution'
-                    ]
-                })
-                
-                st.dataframe(metrics_df, use_container_width=True, hide_index=True)
-                
-                # Trading Rules Summary
-                st.markdown('<div class="sub-header">📖 Master Trader Rules Summary</div>', unsafe_allow_html=True)
-                
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    st.markdown("""
-                    ### 🎯 Dan Zanger's Golden Rules
-                    1. **Volume is Everything** - Pattern must break with 3x average volume
-                    2. **8% Absolute Sell Rule** - Cut losses without emotion
-                    3. **Focus on Liquid Leaders** - Trade stocks in strong sectors
-                    4. **Patience Pays** - Wait 7-8 weeks for cup formation
-                    5. **Upper Half Entry** - Handle must be in upper half of cup
-                    6. **Pure Technicals** - Price & volume tell the story
-                    """)
-                
-                with col2:
-                    st.markdown("""
-                    ### 🎓 Qullamaggie's Swing Rules
-                    1. **Extreme Discipline** - Rigid adherence prevents emotional mistakes
-                    2. **1% Risk Rule** - Never risk more than 1% of portfolio
-                    3. **Market Leaders Only** - Focus on strongest stocks in strongest groups
-                    4. **ORH Entry** - Opening Range High entry for episodic pivots
-                    5. **VDU = Gold** - Volume Dry Up shows selling exhaustion
-                    6. **Momentum Trading** - Follow institutional money flow
-                    7. **3-5 Day Hold** - Quick profits, trail winners with 10/20 SMA
-                    """)
-                
-                st.success(f"✅ Analysis completed for {symbol}")
+                st.success(f"✅ Analysis completed for {symbol} at {datetime.now().strftime('%H:%M:%S')}")
                 
             else:
-                st.error(f"❌ Unable to fetch data for {symbol}. Please check the symbol and try again.")
-                st.info("💡 Tip: Try adding .NS for NSE stocks or .BO for BSE stocks")
+                st.error(f"❌ Unable to fetch data for {symbol}.")
+                st.info("💡 Tips:")
+                st.markdown("""
+                1. Check if the stock symbol is correct
+                2. Try adding .NS suffix for NSE stocks (e.g., RELIANCE.NS)
+                3. Try adding .BO suffix for BSE stocks (e.g., RELIANCE.BO)
+                4. Ensure you have an active internet connection
+                5. Try a different analysis period
+                """)
+    
+    else:
+        # Welcome screen
+        st.markdown("""
+        <div style="text-align: center; padding: 40px 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 15px; color: white;">
+            <h1>Welcome to Indian Equity Market Analyzer Pro</h1>
+            <p style="font-size: 18px;">Advanced technical analysis tool based on master trader strategies</p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.markdown("""
+            <div class="metric-card">
+                <h3>🎯 Dan Zanger Strategies</h3>
+                <p>Pattern-based trading with volume confirmation</p>
+                <ul>
+                    <li>Cup and Handle</li>
+                    <li>High Tight Flag</li>
+                    <li>8% Stop Loss Rule</li>
+                </ul>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with col2:
+            st.markdown("""
+            <div class="metric-card">
+                <h3>📈 Qullamaggie Swing Trading</h3>
+                <p>Momentum-based swing trading strategies</p>
+                <ul>
+                    <li>Episodic Pivots</li>
+                    <li>Breakout Patterns</li>
+                    <li>1% Risk Management</li>
+                </ul>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with col3:
+            st.markdown("""
+            <div class="metric-card">
+                <h3>📊 Advanced Analytics</h3>
+                <p>Comprehensive market analysis tools</p>
+                <ul>
+                    <li>Volume Profile</li>
+                    <li>Risk Management</li>
+                    <li>Sector Analysis</li>
+                </ul>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        # Quick start examples
+        st.markdown("### 🚀 Quick Start Examples")
+        
+        example_cols = st.columns(4)
+        examples = [
+            ("RELIANCE", "Energy Giant"),
+            ("TCS", "IT Services"),
+            ("HDFCBANK", "Banking Leader"),
+            ("INFY", "IT Major")
+        ]
+        
+        for i, (ex_symbol, ex_desc) in enumerate(examples):
+            with example_cols[i]:
+                if st.button(f"Analyze {ex_symbol}", use_container_width=True):
+                    st.session_state.symbol = ex_symbol
+                    st.rerun()
+        
+        # Features list
+        st.markdown("### ✨ Key Features")
+        
+        features = [
+            ("Pattern Detection", "Automated detection of 10+ trading patterns"),
+            ("Risk Management", "Advanced position sizing and stop loss calculation"),
+            ("Volume Analysis", "Volume profile and institutional flow analysis"),
+            ("Market Context", "Sector and broader market analysis"),
+            ("Real-time Data", "Live market data with caching"),
+            ("Export Reports", "Generate and download analysis reports")
+        ]
+        
+        for feature, description in features:
+            st.markdown(f"✅ **{feature}**: {description}")
 
 if __name__ == "__main__":
     main()
