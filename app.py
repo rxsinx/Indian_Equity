@@ -9,7 +9,7 @@ import ta
 from ta.trend import SMAIndicator, EMAIndicator, MACD
 from ta.momentum import RSIIndicator, StochasticOscillator
 from ta.volatility import BollingerBands, AverageTrueRange
-from ta.volume import VolumeWeightedAveragePrice, OnBalanceVolumeIndicator
+from ta.volume import OnBalanceVolumeIndicator
 import warnings
 warnings.filterwarnings('ignore')
 
