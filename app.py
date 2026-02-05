@@ -1633,6 +1633,7 @@ def create_volume_profile_chart(analyzer):
     
     fig = make_subplots(
         rows=1, cols=2,
+        specs=[[{'type': 'xy'}, {'type': 'domain'}]],  # Add this line!
         subplot_titles=('Volume Profile', 'Value Area Distribution'),
         column_widths=[0.7, 0.3]
     )
@@ -1681,7 +1682,8 @@ def create_volume_profile_chart(analyzer):
     other_value = np.sum(vp['value_distribution']) - high_volume_value - low_volume_value
     
     values = [high_volume_value, other_value, low_volume_value]
-    
+
+    # Now this will work because col=2 is configured as 'domain' type
     fig.add_trace(go.Pie(
         labels=value_labels,
         values=values,
