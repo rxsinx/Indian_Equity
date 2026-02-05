@@ -203,50 +203,50 @@ class IndianEquityAnalyzer:
         df = self.data.copy()
         
         # Moving Averages
-        df['SMA_9'] = SMAIndicator(df['Close'], window=9).sma_indicator()
-        df['SMA_20'] = SMAIndicator(df['Close'], window=20).sma_indicator()
-        df['SMA_50'] = SMAIndicator(df['Close'], window=50).sma_indicator()
-        df['SMA_100'] = SMAIndicator(df['Close'], window=100).sma_indicator()
-        df['SMA_200'] = SMAIndicator(df['Close'], window=200).sma_indicator()
+        df['SMA_9'] = ta.trend.sma_indicator(df['Close'], window=9)
+        df['SMA_20'] = ta.trend.sma_indicator(df['Close'], window=20)
+        df['SMA_50'] = ta.trend.sma_indicator(df['Close'], window=50)
+        df['SMA_100'] = ta.trend.sma_indicator(df['Close'], window=100)
+        df['SMA_200'] = ta.trend.sma_indicator(df['Close'], window=200)
         
-        df['EMA_8'] = EMAIndicator(df['Close'], window=8).ema_indicator()
-        df['EMA_13'] = EMAIndicator(df['Close'], window=13).ema_indicator()
-        df['EMA_21'] = EMAIndicator(df['Close'], window=21).ema_indicator()
-        df['EMA_34'] = EMAIndicator(df['Close'], window=34).ema_indicator()
-        df['EMA_55'] = EMAIndicator(df['Close'], window=55).ema_indicator()
+        df['EMA_8'] = ta.trend.ema_indicator(df['Close'], window=8)
+        df['EMA_13'] = ta.trend.ema_indicator(df['Close'], window=13)
+        df['EMA_21'] = ta.trend.ema_indicator(df['Close'], window=21)
+        df['EMA_34'] = ta.trend.ema_indicator(df['Close'], window=34)
+        df['EMA_55'] = ta.trend.ema_indicator(df['Close'], window=55)
         
         # MACD with multiple configurations
-        macd_fast = MACD(df['Close'], window_fast=12, window_slow=26, window_sign=9)
+        macd_fast = ta.trend.MACD(df['Close'], window_fast=12, window_slow=26, window_sign=9)
         df['MACD'] = macd_fast.macd()
         df['MACD_Signal'] = macd_fast.macd_signal()
         df['MACD_Hist'] = macd_fast.macd_diff()
         
         # RSI with multiple periods
-        df['RSI_14'] = RSIIndicator(df['Close'], window=14).rsi()
-        df['RSI_7'] = RSIIndicator(df['Close'], window=7).rsi()
-        df['RSI_21'] = RSIIndicator(df['Close'], window=21).rsi()
+        df['RSI_14'] = ta.momentum.rsi(df['Close'], window=14)
+        df['RSI_7'] = ta.momentum.rsi(df['Close'], window=7)
+        df['RSI_21'] = ta.momentum.rsi(df['Close'], window=21)
         
         # Bollinger Bands with multiple deviations
-        bb_20_2 = BollingerBands(df['Close'], window=20, window_dev=2)
+        bb_20_2 = ta.volatility.BollingerBands(df['Close'], window=20, window_dev=2)
         df['BB_Upper'] = bb_20_2.bollinger_hband()
         df['BB_Middle'] = bb_20_2.bollinger_mavg()
         df['BB_Lower'] = bb_20_2.bollinger_lband()
         
-        bb_20_1 = BollingerBands(df['Close'], window=20, window_dev=1)
+        bb_20_1 = ta.volatility.BollingerBands(df['Close'], window=20, window_dev=1)
         df['BB_Upper_1'] = bb_20_1.bollinger_hband()
         df['BB_Lower_1'] = bb_20_1.bollinger_lband()
         
         # Stochastic
-        stoch = StochasticOscillator(df['High'], df['Low'], df['Close'], window=14, smooth_window=3)
+        stoch = ta.momentum.StochasticOscillator(df['High'], df['Low'], df['Close'], window=14, smooth_window=3)
         df['Stoch_K'] = stoch.stoch()
         df['Stoch_D'] = stoch.stoch_signal()
         
         # ATR and Volatility
-        df['ATR_14'] = AverageTrueRange(df['High'], df['Low'], df['Close'], window=14).average_true_range()
-        df['ATR_7'] = AverageTrueRange(df['High'], df['Low'], df['Close'], window=7).average_true_range()
+        df['ATR_14'] = ta.volatility.average_true_range(df['High'], df['Low'], df['Close'], window=14)
+        df['ATR_7'] = ta.volatility.average_true_range(df['High'], df['Low'], df['Close'], window=7)
         
         # Volume indicators
-        df['OBV'] = OnBalanceVolumeIndicator(df['Close'], df['Volume']).on_balance_volume()
+        df['OBV'] = ta.volume.on_balance_volume(df['Close'], df['Volume'])
         df['Volume_SMA_20'] = df['Volume'].rolling(window=20).mean()
         df['Volume_Ratio'] = df['Volume'] / df['Volume_SMA_20']
         
@@ -255,7 +255,7 @@ class IndianEquityAnalyzer:
         
         # Additional momentum indicators
         df['ROC_10'] = df['Close'].pct_change(periods=10) * 100  # Rate of Change
-        df['Williams_%R'] = (df['High'].rolling(14).max() - df['Close']) / (df['High'].rolling(14).max() - df['Low'].rolling(14).min()) * -100
+        df['Williams_%R'] = ta.momentum.williams_r(df['High'], df['Low'], df['Close'], lbp=14)
         
         # Price channels
         df['Donchian_High'] = df['High'].rolling(window=20).max()
@@ -330,12 +330,20 @@ class IndianEquityAnalyzer:
         low_volume_nodes = bins[:-1][volume_at_price < low_volume_threshold]
         
         # Calculate volume profile statistics
-        volume_profile_stats = {
-            'total_volume': total_volume,
-            'volume_std': volume_std,
-            'volume_skew': stats.skew(volume_at_price),
-            'volume_kurtosis': stats.kurtosis(volume_at_price)
-        }
+        try:
+            volume_profile_stats = {
+                'total_volume': total_volume,
+                'volume_std': volume_std,
+                'volume_skew': stats.skew(volume_at_price),
+                'volume_kurtosis': stats.kurtosis(volume_at_price)
+            }
+        except:
+            volume_profile_stats = {
+                'total_volume': total_volume,
+                'volume_std': volume_std,
+                'volume_skew': 0,
+                'volume_kurtosis': 0
+            }
         
         # Identify single prints (low volume areas)
         single_prints = bins[:-1][volume_at_price < (volume_mean * 0.3)]
@@ -794,16 +802,16 @@ class IndianEquityAnalyzer:
         score = 0
         prices = df['Close'].values
         
-        # Find local minima
-        from scipy.signal import find_peaks
+        # Find local minima using simple method
+        minima_indices = []
+        for i in range(1, len(prices) - 1):
+            if prices[i] < prices[i-1] and prices[i] < prices[i+1]:
+                minima_indices.append(i)
         
-        # Use negative prices to find troughs
-        troughs, _ = find_peaks(-prices, distance=10, prominence=np.std(prices)*0.5)
-        
-        if len(troughs) >= 2:
-            # Get two most recent troughs
-            trough1_idx = troughs[-2]
-            trough2_idx = troughs[-1]
+        if len(minima_indices) >= 2:
+            # Get two most recent minima
+            trough1_idx = minima_indices[-2]
+            trough2_idx = minima_indices[-1]
             
             # Check if troughs are similar in price
             trough1_price = prices[trough1_idx]
@@ -998,54 +1006,44 @@ class IndianEquityAnalyzer:
         score = 0
         prices = df['Close'].values
         
-        # Simplified detection - look for clear AB=CD structure
-        from scipy.signal import find_peaks, find_peaks
+        # Simple swing detection
+        swings = []
+        for i in range(1, len(prices)-1):
+            if prices[i] > prices[i-1] and prices[i] > prices[i+1]:
+                swings.append(('peak', i, prices[i]))
+            elif prices[i] < prices[i-1] and prices[i] < prices[i+1]:
+                swings.append(('trough', i, prices[i]))
         
-        peaks, _ = find_peaks(prices, distance=10, prominence=np.std(prices)*0.5)
-        troughs, _ = find_peaks(-prices, distance=10, prominence=np.std(prices)*0.5)
-        
-        if len(peaks) >= 2 and len(troughs) >= 2:
-            # Look for potential ABCD structure in last 30 periods
-            recent_prices = prices[-30:]
-            
-            # Simple swing detection
-            swings = []
-            for i in range(1, len(recent_prices)-1):
-                if recent_prices[i] > recent_prices[i-1] and recent_prices[i] > recent_prices[i+1]:
-                    swings.append(('peak', i, recent_prices[i]))
-                elif recent_prices[i] < recent_prices[i-1] and recent_prices[i] < recent_prices[i+1]:
-                    swings.append(('trough', i, recent_prices[i]))
-            
-            if len(swings) >= 4:
-                # Check for ABCD pattern
-                for i in range(len(swings)-3):
-                    if (swings[i][0] == 'peak' and swings[i+1][0] == 'trough' and 
-                        swings[i+2][0] == 'peak' and swings[i+3][0] == 'trough'):
+        if len(swings) >= 4:
+            # Check for ABCD pattern
+            for i in range(len(swings)-3):
+                if (swings[i][0] == 'peak' and swings[i+1][0] == 'trough' and 
+                    swings[i+2][0] == 'peak' and swings[i+3][0] == 'trough'):
+                    
+                    A = swings[i][2]
+                    B = swings[i+1][2]
+                    C = swings[i+2][2]
+                    D = swings[i+3][2]
+                    
+                    # Calculate Fibonacci ratios
+                    AB = A - B
+                    BC = C - B
+                    CD = C - D
+                    
+                    if AB > 0 and BC > 0 and CD > 0:
+                        # Check for approximate Fibonacci ratios
+                        bc_ab_ratio = BC / AB
+                        cd_bc_ratio = CD / BC
                         
-                        A = swings[i][2]
-                        B = swings[i+1][2]
-                        C = swings[i+2][2]
-                        D = swings[i+3][2]
+                        if 0.618 <= bc_ab_ratio <= 0.786:  # BC retracement
+                            score += 0.3
+                        if 1.272 <= cd_bc_ratio <= 1.618:  # CD extension
+                            score += 0.3
                         
-                        # Calculate Fibonacci ratios
-                        AB = A - B
-                        BC = C - B
-                        CD = C - D
-                        
-                        if AB > 0 and BC > 0 and CD > 0:
-                            # Check for approximate Fibonacci ratios
-                            bc_ab_ratio = BC / AB
-                            cd_bc_ratio = CD / BC
-                            
-                            if 0.618 <= bc_ab_ratio <= 0.786:  # BC retracement
-                                score += 0.3
-                            if 1.272 <= cd_bc_ratio <= 1.618:  # CD extension
-                                score += 0.3
-                            
-                            # AB ≈ CD
-                            ab_cd_ratio = AB / CD
-                            if 0.8 <= ab_cd_ratio <= 1.2:
-                                score += 0.2
+                        # AB ≈ CD
+                        ab_cd_ratio = AB / CD
+                        if 0.8 <= ab_cd_ratio <= 1.2:
+                            score += 0.2
         
         return score
     
@@ -1053,13 +1051,12 @@ class IndianEquityAnalyzer:
         """Generate comprehensive trading signal with weighted scoring"""
         df = self.data
         if df is None or len(df) < 50:
-            return "NO DATA", [], 0
+            return "NO DATA", [], 0, "gray"
         
         current = df.iloc[-1]
         
         signals = []
         score = 0
-        max_score = 0
         
         # Weighted scoring system
         weights = {
@@ -1357,9 +1354,6 @@ class IndianEquityAnalyzer:
             nifty_trend = "BULLISH" if current_nifty > nifty_sma_50 and current_nifty > nifty_sma_200 else "BEARISH"
             
             current_vix = vix_data['Close'].iloc[-1] if not vix_data.empty else None
-            
-            # Market breadth (simplified)
-            nifty_gainers = 0  # This would require actual breadth data
             
             return {
                 'nifty_level': current_nifty,
@@ -1863,10 +1857,10 @@ def main():
     
     if analyze_btn and symbol:
         with st.spinner(f'🔄 Analyzing {symbol}...'):
-            # Fetch data with caching
-            analyzer = analyzer.fetch_data(symbol, period)
+            # Create analyzer instance and fetch data
+            analyzer = IndianEquityAnalyzer(symbol, period)
             
-            if analyzer:
+            if analyzer._fetch_raw_data():
                 # Company Information Section
                 st.markdown('<div class="sub-header">🏢 Company Overview</div>', unsafe_allow_html=True)
                 
