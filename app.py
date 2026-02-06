@@ -1498,36 +1498,34 @@ class IndianEquityAnalyzer:
         
         return info
 
-    
-    def get_analyst_forecasts(self):
-    """Fetch analyst estimates and forecast data from yfinance."""
-    forecasts = {}
-    try:
-        info = self.ticker.info
+        #Fetch analyst estimates and forecast data from yfinance
+        def get_analyst_forecasts(self):
+            """Fetch analyst estimates and forecast data from yfinance."""
+        forecasts = {}
+        try:
+            info = self.ticker.info
         
-        # Analyst Recommendations & Price Targets
-        forecasts['recommendation'] = info.get('recommendationKey', 'N/A').title()
-        forecasts['num_analysts'] = info.get('numberOfAnalystOpinions', 'N/A')
-        forecasts['target_mean'] = info.get('targetMeanPrice', 'N/A')
-        forecasts['target_high'] = info.get('targetHighPrice', 'N/A')
-        forecasts['target_low'] = info.get('targetLowPrice', 'N/A')
-        
-        # Earnings & Revenue Estimates
-        forecasts['current_year_eps'] = info.get('currentYearEpsEstimate', 'N/A')
-        forecasts['next_year_eps'] = info.get('nextYearEpsEstimate', 'N/A')
-        forecasts['current_year_rev'] = info.get('currentYearRevenueEstimate', 'N/A')
-        forecasts['next_year_rev'] = info.get('nextYearRevenueEstimate', 'N/A')
-        
-        # Growth Rates
-        forecasts['eps_growth'] = info.get('epsGrowthNextYear', 'N/A')
-        forecasts['rev_growth'] = info.get('revenueGrowthNextYear', 'N/A')
+            # Analyst Recommendations & Price Targets
+            forecasts['recommendation'] = info.get('recommendationKey', 'N/A').title()
+            forecasts['num_analysts'] = info.get('numberOfAnalystOpinions', 'N/A')
+            forecasts['target_mean'] = info.get('targetMeanPrice', 'N/A')
+            forecasts['target_high'] = info.get('targetHighPrice', 'N/A')
+            forecasts['target_low'] = info.get('targetLowPrice', 'N/A')
+            
+            # Earnings & Revenue Estimates
+            forecasts['current_year_eps'] = info.get('currentYearEpsEstimate', 'N/A')
+            forecasts['next_year_eps'] = info.get('nextYearEpsEstimate', 'N/A')
+            forecasts['current_year_rev'] = info.get('currentYearRevenueEstimate', 'N/A')
+            forecasts['next_year_rev'] = info.get('nextYearRevenueEstimate', 'N/A')
+            
+            # Growth Rates
+            forecasts['eps_growth'] = info.get('epsGrowthNextYear', 'N/A')
+            forecasts['rev_growth'] = info.get('revenueGrowthNextYear', 'N/A')
         
     except Exception as e:
         # Fallback in case data is not available
         forecasts['error'] = f"Forecast data limited: {e}"
     return forecasts
-
-
     
     def format_market_cap(self, market_cap):
         """Format market cap to readable string"""
@@ -1826,7 +1824,7 @@ def main():
             "Portfolio Value (₹)",
             min_value=10000,
             max_value=10000000,
-            value=100000,
+            value=1000000,
             step=10000,
             help="Used for position sizing calculations"
         )
@@ -1948,6 +1946,7 @@ def main():
                     st.metric("52W Low", f"₹{info.get('52w_low', 0):.2f}")
 
                 # ==================== ANALYST FORECASTS SECTION ====================
+              
                 st.markdown('<div class="sub-header">📰 Analyst Forecasts & Estimates</div>', unsafe_allow_html=True)
                 
                 # Fetch the forecast data
