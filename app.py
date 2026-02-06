@@ -1522,10 +1522,10 @@ class IndianEquityAnalyzer:
             forecasts['eps_growth'] = info.get('epsGrowthNextYear', 'N/A')
             forecasts['rev_growth'] = info.get('revenueGrowthNextYear', 'N/A')
         
-    except Exception as e:
+        except Exception as e:
         # Fallback in case data is not available
-        forecasts['error'] = f"Forecast data limited: {e}"
-    return forecasts
+            forecasts['error'] = f"Forecast data limited: {e}"
+        return forecasts
     
     def format_market_cap(self, market_cap):
         """Format market cap to readable string"""
