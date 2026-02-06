@@ -1500,32 +1500,41 @@ class IndianEquityAnalyzer:
 
         #Fetch analyst estimates and forecast data from yfinance
         def get_analyst_forecasts(self):
-            """Fetch analyst estimates and forecast data from yfinance."""
-            forecasts = {}
+            """Get analyst recommendations and price targets"""
+            
             try:
                 info = self.ticker.info
         
-                # Analyst Recommendations & Price Targets
-                forecasts['recommendation'] = info.get('recommendationKey', 'N/A').title()
-                forecasts['num_analysts'] = info.get('numberOfAnalystOpinions', 'N/A')
-                forecasts['target_mean'] = info.get('targetMeanPrice', 'N/A')
-                forecasts['target_high'] = info.get('targetHighPrice', 'N/A')
-                forecasts['target_low'] = info.get('targetLowPrice', 'N/A')
+                current_price = self.data['Close'].iloc[-1] if self.data is not None else 0
+        
+                analyst_data = {
+                    'current_price': current_price,
+                    'target_mean': info.get('targetMeanPrice', None),
+                    'target_high': info.get('targetHighPrice', None),
+                    'target_low': info.get('targetLowPrice', None),
+                    'recommendation': info.get('recommendationKey', 'N/A'),
+                    'number_of_analysts': info.get('numberOfAnalystOpinions', 0)
+                } 
                 
-                # Earnings & Revenue Estimates
-                forecasts['current_year_eps'] = info.get('currentYearEpsEstimate', 'N/A')
-                forecasts['next_year_eps'] = info.get('nextYearEpsEstimate', 'N/A')
-                forecasts['current_year_rev'] = info.get('currentYearRevenueEstimate', 'N/A')
-                forecasts['next_year_rev'] = info.get('nextYearRevenueEstimate', 'N/A')
+                # Calculate upside
+                if analyst_data['target_mean'] and current_price > 0:
+                    upside = ((analyst_data['target_mean'] - current_price) / current_price) * 100
+                    analyst_data['upside_percent'] = round(upside, 2)
+                else:
+                    analyst_data['upside_percent'] = None
                 
-                # Growth Rates
-                forecasts['eps_growth'] = info.get('epsGrowthNextYear', 'N/A')
-                forecasts['rev_growth'] = info.get('revenueGrowthNextYear', 'N/A')
-            
+                return analyst_data
+        
             except Exception as e:
-                # Fallback in case data is not available
-                forecasts['error'] = f"Forecast data limited: {e}"
-            return forecasts
+                return {
+                    'current_price': self.data['Close'].iloc[-1] if self.data is not None else 0,
+                    'target_mean': None,
+                    'target_high': None,
+                    'target_low': None,
+                    'recommendation': 'N/A',
+                    'number_of_analysts': 0,
+                    'upside_percent': None
+                }
     
     def format_market_cap(self, market_cap):
         """Format market cap to readable string"""
@@ -1808,7 +1817,7 @@ def main():
         # Stock selection
         symbol = st.text_input(
             "Enter Stock Symbol",
-            value="RELIANCE",
+            value="",
             help="Enter NSE symbol (e.g., RELIANCE, TCS, HDFCBANK)"
         )
         
