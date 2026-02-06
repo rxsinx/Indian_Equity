@@ -1237,7 +1237,7 @@ class IndianEquityAnalyzer:
         
         return overall, signals, score, color
     
-    def get_risk_management(self, portfolio_value=100000):
+    def get_risk_management(self, portfolio_value=1000000):
         """Calculate advanced risk management parameters"""
         df = self.data
         if df is None or len(df) < 20:
@@ -1498,43 +1498,43 @@ class IndianEquityAnalyzer:
         
         return info
 
-        #Fetch analyst estimates and forecast data from yfinance
-        def get_analyst_forecasts(self):
-            """Get analyst recommendations and price targets"""
+    #Fetch analyst estimates and forecast data from yfinance
+    def get_analyst_forecasts(self):
+        """Get analyst recommendations and price targets"""
             
-            try:
-                info = self.ticker.info
+        try:
+            info = self.ticker.info
         
-                current_price = self.data['Close'].iloc[-1] if self.data is not None else 0
+            current_price = self.data['Close'].iloc[-1] if self.data is not None else 0
         
-                analyst_data = {
-                    'current_price': current_price,
-                    'target_mean': info.get('targetMeanPrice', None),
-                    'target_high': info.get('targetHighPrice', None),
-                    'target_low': info.get('targetLowPrice', None),
-                    'recommendation': info.get('recommendationKey', 'N/A'),
-                    'number_of_analysts': info.get('numberOfAnalystOpinions', 0)
-                } 
+            analyst_data = {
+                'current_price': current_price,
+                'target_mean': info.get('targetMeanPrice', None),
+                'target_high': info.get('targetHighPrice', None),
+                'target_low': info.get('targetLowPrice', None),
+                'recommendation': info.get('recommendationKey', 'N/A'),
+                'number_of_analysts': info.get('numberOfAnalystOpinions', 0)
+            } 
                 
-                # Calculate upside
-                if analyst_data['target_mean'] and current_price > 0:
-                    upside = ((analyst_data['target_mean'] - current_price) / current_price) * 100
-                    analyst_data['upside_percent'] = round(upside, 2)
-                else:
-                    analyst_data['upside_percent'] = None
+            # Calculate upside
+            if analyst_data['target_mean'] and current_price > 0:
+                upside = ((analyst_data['target_mean'] - current_price) / current_price) * 100
+                analyst_data['upside_percent'] = round(upside, 2)
+            else:
+                analyst_data['upside_percent'] = None
                 
-                return analyst_data
+            return analyst_data
         
-            except Exception as e:
-                return {
-                    'current_price': self.data['Close'].iloc[-1] if self.data is not None else 0,
-                    'target_mean': None,
-                    'target_high': None,
-                    'target_low': None,
-                    'recommendation': 'N/A',
-                    'number_of_analysts': 0,
-                    'upside_percent': None
-                }
+        except Exception as e:
+            return {
+                'current_price': self.data['Close'].iloc[-1] if self.data is not None else 0,
+                'target_mean': None,
+                'target_high': None,
+                'target_low': None,
+                'recommendation': 'N/A',
+                'number_of_analysts': 0,
+                'upside_percent': None
+            }
     
     def format_market_cap(self, market_cap):
         """Format market cap to readable string"""
