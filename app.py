@@ -1508,68 +1508,68 @@ class IndianEquityAnalyzer:
             current_price = self.data['Close'].iloc[-1] if self.data is not None else 0
         
             # Get earnings estimates from the analysis dataframe if available
-        eps_current_year = None
-        eps_next_year = None
-        if analysis is not None and not analysis.empty:
-            # These are typical column names in the analysis dataframe
-            if 'EpsEstimateCurrentYear' in analysis.columns:
-                eps_current_year = analysis['EpsEstimateCurrentYear'].iloc[-1] if not analysis['EpsEstimateCurrentYear'].empty else None
+            eps_current_year = None
+            eps_next_year = None
+            if analysis is not None and not analysis.empty:
+                # These are typical column names in the analysis dataframe
+                if 'EpsEstimateCurrentYear' in analysis.columns:
+                    eps_current_year = analysis['EpsEstimateCurrentYear'].iloc[-1] if not analysis['EpsEstimateCurrentYear'].empty else None
             if 'EpsEstimateNextYear' in analysis.columns:
-                eps_next_year = analysis['EpsEstimateNextYear'].iloc[-1] if not analysis['EpsEstimateNextYear'].empty else None
+                    eps_next_year = analysis['EpsEstimateNextYear'].iloc[-1] if not analysis['EpsEstimateNextYear'].empty else None
         
-        analyst_data = {
-            'current_price': current_price,
-            'target_mean': info.get('targetMeanPrice', None),
-            'target_high': info.get('targetHighPrice', None),
-            'target_low': info.get('targetLowPrice', None),
-            'recommendation': info.get('recommendationKey', 'N/A'),
-            'num_analysts': info.get('numberOfAnalystOpinions', 0),
-            'current_year_eps': eps_current_year,
-            'next_year_eps': eps_next_year
-        }
-        
-        # Calculate upside
-        if analyst_data['target_mean'] and current_price > 0:
-            upside = ((analyst_data['target_mean'] - current_price) / current_price) * 100
-            analyst_data['upside_percent'] = round(upside, 2)
-        else:
-            analyst_data['upside_percent'] = None
-            
-        # Get recent recommendations trend
-        if recommendations is not None and not recommendations.empty:
-            recent_rec = recommendations.tail(5)
-            analyst_data['recent_recommendations'] = recent_rec.to_dict('records')
-        else:
-            analyst_data['recent_recommendations'] = []
-            
-        return analyst_data
-        
-    except Exception as e:
-    
-        # Fallback to basic info if detailed analysis fails
-        try:
-            info = self.ticker.info
-            current_price = self.data['Close'].iloc[-1] if self.data is not None else 0
-            
-            return {
+            analyst_data = {
                 'current_price': current_price,
                 'target_mean': info.get('targetMeanPrice', None),
                 'target_high': info.get('targetHighPrice', None),
                 'target_low': info.get('targetLowPrice', None),
                 'recommendation': info.get('recommendationKey', 'N/A'),
                 'num_analysts': info.get('numberOfAnalystOpinions', 0),
-                'upside_percent': None
+                'current_year_eps': eps_current_year,
+                'next_year_eps': eps_next_year
             }
-        except:
-            return {
-                'current_price': self.data['Close'].iloc[-1] if self.data is not None else 0,
-                'target_mean': None,
-                'target_high': None,
-                'target_low': None,
-                'recommendation': 'N/A',
-                'num_analysts': 0,
-                'upside_percent': None
-            }
+        
+            # Calculate upside
+            if analyst_data['target_mean'] and current_price > 0:
+                upside = ((analyst_data['target_mean'] - current_price) / current_price) * 100
+                analyst_data['upside_percent'] = round(upside, 2)
+            else:
+                analyst_data['upside_percent'] = None
+            
+            # Get recent recommendations trend
+            if recommendations is not None and not recommendations.empty:
+                recent_rec = recommendations.tail(5)
+                analyst_data['recent_recommendations'] = recent_rec.to_dict('records')
+            else:
+                analyst_data['recent_recommendations'] = []
+            
+        return analyst_data
+        
+        except Exception as e:
+    
+            # Fallback to basic info if detailed analysis fails
+            try:
+                info = self.ticker.info
+                current_price = self.data['Close'].iloc[-1] if self.data is not None else 0
+            
+                return {
+                    'current_price': current_price,
+                    'target_mean': info.get('targetMeanPrice', None),
+                    'target_high': info.get('targetHighPrice', None),
+                    'target_low': info.get('targetLowPrice', None),
+                    'recommendation': info.get('recommendationKey', 'N/A'),
+                    'num_analysts': info.get('numberOfAnalystOpinions', 0),
+                    'upside_percent': None
+                }
+            except:
+                return {
+                    'current_price': self.data['Close'].iloc[-1] if self.data is not None else 0,
+                    'target_mean': None,
+                    'target_high': None,
+                    'target_low': None,
+                    'recommendation': 'N/A',
+                    'num_analysts': 0,
+                    'upside_percent': None
+                }
     
     def format_market_cap(self, market_cap):
         """Format market cap to readable string"""
