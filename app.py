@@ -2077,7 +2077,7 @@ def main():
                         title={'text': "Signal Strength"},
                         gauge={
                             'axis': {'range': [-50, 100]},
-                            'bar': {'color': "black"},
+                            'bar': {'color': "blue"},
                             'steps': [
                                 {'range': [-50, 0], 'color': "red"},
                                 {'range': [0, 50], 'color': "yellow"},
