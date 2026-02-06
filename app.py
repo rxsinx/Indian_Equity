@@ -1501,31 +1501,31 @@ class IndianEquityAnalyzer:
         #Fetch analyst estimates and forecast data from yfinance
         def get_analyst_forecasts(self):
             """Fetch analyst estimates and forecast data from yfinance."""
-        forecasts = {}
-        try:
-            info = self.ticker.info
+            forecasts = {}
+            try:
+                info = self.ticker.info
         
-            # Analyst Recommendations & Price Targets
-            forecasts['recommendation'] = info.get('recommendationKey', 'N/A').title()
-            forecasts['num_analysts'] = info.get('numberOfAnalystOpinions', 'N/A')
-            forecasts['target_mean'] = info.get('targetMeanPrice', 'N/A')
-            forecasts['target_high'] = info.get('targetHighPrice', 'N/A')
-            forecasts['target_low'] = info.get('targetLowPrice', 'N/A')
+                # Analyst Recommendations & Price Targets
+                forecasts['recommendation'] = info.get('recommendationKey', 'N/A').title()
+                forecasts['num_analysts'] = info.get('numberOfAnalystOpinions', 'N/A')
+                forecasts['target_mean'] = info.get('targetMeanPrice', 'N/A')
+                forecasts['target_high'] = info.get('targetHighPrice', 'N/A')
+                forecasts['target_low'] = info.get('targetLowPrice', 'N/A')
+                
+                # Earnings & Revenue Estimates
+                forecasts['current_year_eps'] = info.get('currentYearEpsEstimate', 'N/A')
+                forecasts['next_year_eps'] = info.get('nextYearEpsEstimate', 'N/A')
+                forecasts['current_year_rev'] = info.get('currentYearRevenueEstimate', 'N/A')
+                forecasts['next_year_rev'] = info.get('nextYearRevenueEstimate', 'N/A')
+                
+                # Growth Rates
+                forecasts['eps_growth'] = info.get('epsGrowthNextYear', 'N/A')
+                forecasts['rev_growth'] = info.get('revenueGrowthNextYear', 'N/A')
             
-            # Earnings & Revenue Estimates
-            forecasts['current_year_eps'] = info.get('currentYearEpsEstimate', 'N/A')
-            forecasts['next_year_eps'] = info.get('nextYearEpsEstimate', 'N/A')
-            forecasts['current_year_rev'] = info.get('currentYearRevenueEstimate', 'N/A')
-            forecasts['next_year_rev'] = info.get('nextYearRevenueEstimate', 'N/A')
-            
-            # Growth Rates
-            forecasts['eps_growth'] = info.get('epsGrowthNextYear', 'N/A')
-            forecasts['rev_growth'] = info.get('revenueGrowthNextYear', 'N/A')
-        
-        except Exception as e:
-        # Fallback in case data is not available
-            forecasts['error'] = f"Forecast data limited: {e}"
-        return forecasts
+            except Exception as e:
+                # Fallback in case data is not available
+                forecasts['error'] = f"Forecast data limited: {e}"
+            return forecasts
     
     def format_market_cap(self, market_cap):
         """Format market cap to readable string"""
@@ -1950,65 +1950,66 @@ def main():
                 st.markdown('<div class="sub-header">📰 Analyst Forecasts & Estimates</div>', unsafe_allow_html=True)
                 
                 # Fetch the forecast data
-                forecasts = analyzer.get_analyst_forecasts()
+                try:
+                    forecasts = analyzer.get_analyst_forecasts()
                 
-                # Check if we have meaningful data to display (more than just 'N/A')
-                if forecasts.get('num_analysts', 0) > 0:
+                    # Check if we have meaningful data to display (more than just 'N/A')
+                    if forecasts.get('num_analysts', 0) > 0:
                     
-                    # First row: Recommendations and Price Targets
-                    col1, col2, col3, col4 = st.columns(4)
-                    with col1:
-                        st.metric("Analyst Consensus", forecasts.get('recommendation', 'N/A'))
-                    with col2:
-                        st.metric("No. of Analysts", forecasts.get('num_analysts', 'N/A'))
-                    with col3:
-                        target = forecasts.get('target_mean')
-                        display_target = f"₹{target:,.0f}" if isinstance(target, (int, float)) else 'N/A'
-                        st.metric("Avg. Price Target", display_target)
-                    with col4:
-                        current_price = analyzer.data['Close'].iloc[-1] if analyzer.data is not None else 0
-                        if isinstance(target, (int, float)) and current_price > 0:
-                            upside = ((target - current_price) / current_price) * 100
-                            st.metric("Upside Potential", f"{upside:+.1f}%")
-                        else:
-                            st.metric("Upside Potential", "N/A")
-                    
-                    # Second row: Earnings and Growth Estimates
-                    st.markdown("**Earnings & Growth Estimates**")
-                    col5, col6, col7, col8 = st.columns(4)
-                    with col5:
-                        eps = forecasts.get('current_year_eps')
-                        display_eps = f"₹{eps:.1f}" if isinstance(eps, (int, float)) else 'N/A'
-                        st.metric("Current Year EPS Est.", display_eps)
-                    with col6:
-                        eps_next = forecasts.get('next_year_eps')
-                        display_eps_next = f"₹{eps_next:.1f}" if isinstance(eps_next, (int, float)) else 'N/A'
-                        st.metric("Next Year EPS Est.", display_eps_next)
-                    with col7:
-                        growth = forecasts.get('eps_growth')
-                        display_growth = f"{growth*100:.1f}%" if isinstance(growth, (int, float)) else 'N/A'
-                        st.metric("EPS Growth (Est.)", display_growth)
-                    with col8:
-                        rev = forecasts.get('current_year_rev')
-                        # Format large revenue numbers in Cr or Lakh Cr
-                        if isinstance(rev, (int, float)):
-                            if rev >= 1e10:
-                                display_rev = f"₹{rev/1e10:.1f} Cr"
-                            elif rev >= 1e7:
-                                display_rev = f"₹{rev/1e7:.0f} Lakh"
+                        # First row: Recommendations and Price Targets
+                        col1, col2, col3, col4 = st.columns(4)
+                        with col1:
+                            st.metric("Analyst Consensus", forecasts.get('recommendation', 'N/A'))
+                        with col2:
+                            st.metric("No. of Analysts", forecasts.get('num_analysts', 'N/A'))
+                        with col3:
+                            target = forecasts.get('target_mean')
+                            display_target = f"₹{target:,.0f}" if isinstance(target, (int, float)) else 'N/A'
+                            st.metric("Avg. Price Target", display_target)
+                        with col4:
+                            current_price = analyzer.data['Close'].iloc[-1] if analyzer.data is not None else 0
+                            if isinstance(target, (int, float)) and current_price > 0:
+                                upside = ((target - current_price) / current_price) * 100
+                                st.metric("Upside Potential", f"{upside:+.1f}%")
                             else:
-                                display_rev = f"₹{rev:,.0f}"
-                        else:
-                            display_rev = 'N/A'
-                        st.metric("Current Year Rev. Est.", display_rev)
+                                st.metric("Upside Potential", "N/A")
+                        
+                        # Second row: Earnings and Growth Estimates
+                        st.markdown("**Earnings & Growth Estimates**")
+                        col5, col6, col7, col8 = st.columns(4)
+                        with col5:
+                            eps = forecasts.get('current_year_eps')
+                            display_eps = f"₹{eps:.1f}" if isinstance(eps, (int, float)) else 'N/A'
+                            st.metric("Current Year EPS Est.", display_eps)
+                        with col6:
+                            eps_next = forecasts.get('next_year_eps')
+                            display_eps_next = f"₹{eps_next:.1f}" if isinstance(eps_next, (int, float)) else 'N/A'
+                            st.metric("Next Year EPS Est.", display_eps_next)
+                        with col7:
+                            growth = forecasts.get('eps_growth')
+                            display_growth = f"{growth*100:.1f}%" if isinstance(growth, (int, float)) else 'N/A'
+                            st.metric("EPS Growth (Est.)", display_growth)
+                        with col8:
+                            rev = forecasts.get('current_year_rev')
+                            # Format large revenue numbers in Cr or Lakh Cr
+                            if isinstance(rev, (int, float)):
+                                if rev >= 1e10:
+                                    display_rev = f"₹{rev/1e10:.1f} Cr"
+                                elif rev >= 1e7:
+                                    display_rev = f"₹{rev/1e7:.0f} Lakh"
+                                else:
+                                    display_rev = f"₹{rev:,.0f}"
+                            else:
+                                display_rev = 'N/A'
+                            st.metric("Current Year Rev. Est.", display_rev)
                 
-                else:
-                    # Show a friendly message if forecast data is not available for the stock
-                    st.info("""
+                    else:
+                        st.info("""
                     **Note:** Detailed analyst forecast data is not widely published for this stock.
                     This is common for smaller market cap companies. Fundamental data like P/E ratio and sector information is still available above.
                     """)
-
+                except Exception as e:
+                    st.warning(f"Could not fetch analyst forecasts: {str(e)}")
                 
                 # Trading Signal
                 st.markdown('<div class="sub-header">🎯 Trading Signal & Analysis</div>', unsafe_allow_html=True)
