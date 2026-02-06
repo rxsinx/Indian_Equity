@@ -1542,7 +1542,7 @@ class IndianEquityAnalyzer:
             else:
                 analyst_data['recent_recommendations'] = []
             
-        return analyst_data
+            return analyst_data
         
         except Exception as e:
     
