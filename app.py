@@ -36,7 +36,7 @@ st.markdown("""
         margin-bottom: 10px;
     }
     .sub-header {
-        font-size: 24px;
+        font-size: 20px;
         font-weight: bold;
         color: #2ca02c;
         margin-top: 20px;
@@ -1501,7 +1501,7 @@ class IndianEquityAnalyzer:
     def format_market_cap(self, market_cap):
         """Format market cap to readable string"""
         if market_cap >= 1e12:
-            return f"₹{market_cap/1e12:.2f} Lakh Cr"
+            return f"₹{market_cap/1e12:.2f} Lac Cr"
         elif market_cap >= 1e10:
             return f"₹{market_cap/1e10:.2f} Cr"
         elif market_cap >= 1e7:
@@ -1684,13 +1684,13 @@ def create_volume_profile_chart(analyzer):
     values = [high_volume_value, other_value, low_volume_value]
 
     # Now this will work because col=2 is configured as 'domain' type
-    fig.add_trace(go.Pie(
-        labels=value_labels,
-        values=values,
-        hole=0.4,
-        marker=dict(colors=['#00cc96', '#636efa', '#ef553b']),
-        textinfo='percent+label'
-    ), row=1, col=2)
+    # fig.add_trace(go.Pie(
+    #    labels=value_labels,
+    #    values=values,
+    #    hole=0.4,
+    #    marker=dict(colors=['#00cc96', '#636efa', '#ef553b']),
+    #    textinfo='percent+label'
+    # ), row=1, col=2)
     
     fig.update_layout(
         title='Volume Profile Analysis',
