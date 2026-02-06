@@ -29,14 +29,14 @@ st.set_page_config(
 st.markdown("""
     <style>
     .main-header {
-        font-size: 42px;
+        font-size: 20px;
         font-weight: bold;
         color: #1f77b4;
         text-align: center;
         margin-bottom: 10px;
     }
     .sub-header {
-        font-size: 20px;
+        font-size: 12px;
         font-weight: bold;
         color: #2ca02c;
         margin-top: 20px;
@@ -106,7 +106,7 @@ st.markdown("""
             font-size: 28px !important;
         }
         .sub-header {
-            font-size: 20px !important;
+            font-size: 14px !important;
         }
         .stMetric {
             font-size: 14px !important;
@@ -123,7 +123,7 @@ st.markdown("""
     }
     
     .stock-ticker {
-        font-size: 28px;
+        font-size: 20px;
         font-weight: bold;
         color: #1a237e;
         padding: 10px;
