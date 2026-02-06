@@ -29,14 +29,14 @@ st.set_page_config(
 st.markdown("""
     <style>
     .main-header {
-        font-size: 46px;
+        font-size: 18px;
         font-weight: bold;
         color: #1f77b4;
         text-align: center;
         margin-bottom: 10px;
     }
     .sub-header {
-        font-size: 24px;
+        font-size: 18px;
         font-weight: bold;
         color: #2ca02c;
         margin-top: 20px;
@@ -103,18 +103,18 @@ st.markdown("""
     
     @media (max-width: 768px) {
         .main-header {
-            font-size: 28px !important;
+            font-size: 18px !important;
         }
         .sub-header {
-            font-size: 20px !important;
+            font-size: 18px !important;
         }
         .stMetric {
-            font-size: 14px !important;
+            font-size: 18px !important;
         }
     }
     
     .stDataFrame {
-        font-size: 14px !important;
+        font-size: 18px !important;
     }
     
     .stPlotlyChart {
@@ -123,7 +123,7 @@ st.markdown("""
     }
     
     .stock-ticker {
-        font-size: 28px;
+        font-size: 18px;
         font-weight: bold;
         color: #1a237e;
         padding: 10px;
@@ -1684,13 +1684,13 @@ def create_volume_profile_chart(analyzer):
     values = [high_volume_value, other_value, low_volume_value]
 
     # Now this will work because col=2 is configured as 'domain' type
-    # fig.add_trace(go.Pie(
-    #    labels=value_labels,
-    #    values=values,
-    #    hole=0.4,
-    #    marker=dict(colors=['#00cc96', '#636efa', '#ef553b']),
-    #    textinfo='percent+label'
-    # ), row=1, col=2)
+    fig.add_trace(go.Pie(
+        labels=value_labels,
+        values=values,
+        hole=0.4,
+        marker=dict(colors=['#00cc96', '#636efa', '#ef553b']),
+        textinfo='percent+label'
+     ), row=1, col=2)
     
     fig.update_layout(
         title='Volume Profile Analysis',
@@ -1926,7 +1926,7 @@ def main():
                     st.markdown(f"""
                     <div style="background-color: {color}; padding: 20px; border-radius: 10px; text-align: center;">
                         <h2 style="margin: 0; color: white;">{overall}</h2>
-                        <p style="margin: 5px 0; font-size: 24px; color: white;">Score: {score:.1f}/100</p>
+                        <p style="margin: 5px 0; font-size: 18px; color: white;">Score: {score:.1f}/100</p>
                     </div>
                     """, unsafe_allow_html=True)
                     
