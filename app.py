@@ -2262,9 +2262,9 @@ def main():
                 
                 indicators = {
                     'Trend': [
-                        ('SMA 20', current['SMA_20'], 'Above' if current['Close'] > current['SMA_20'] else 'Below'),
-                        ('SMA 50', current['SMA_50'], 'Above' if current['Close'] > current['SMA_50'] else 'Below'),
-                        ('SMA 200', current['SMA_200'], 'Above' if current['Close'] > current['SMA_200'] else 'Below'),
+                        ('SMA 20', current['SMA_20']:.2f, 'Above' if current['Close'] > current['SMA_20'] else 'Below'),
+                        ('SMA 50', current['SMA_50']:.2f, 'Above' if current['Close'] > current['SMA_50'] else 'Below'),
+                        ('SMA 200', current['SMA_200']:.2f, 'Above' if current['Close'] > current['SMA_200'] else 'Below'),
                         ('EMA Alignment', 'Bullish' if current['EMA_8'] > current['EMA_21'] > current['EMA_55'] else 'Bearish', '')
                     ],
                     'Momentum': [
