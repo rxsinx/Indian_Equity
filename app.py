@@ -1498,143 +1498,78 @@ class IndianEquityAnalyzer:
         
         return info
 
+    #Fetch analyst estimates and forecast data from yfinance
     def get_analyst_forecasts(self):
-        """
-        Get comprehensive analyst recommendations, price targets, and estimates
-        Enhanced version with earnings forecasts, revenue estimates, and recommendations trend
-        """
-        try:
-            info = self.ticker.info
-            current_price = self.data['Close'].iloc[-1] if self.data is not None and not self.data.empty else 0
+        """Get analyst recommendations and price targets"""
             
-            # Initialize comprehensive analyst data structure
+        try:
+            info = self.ticker.analysis
+            recommendations = self.ticker.recommendations
+            current_price = self.data['Close'].iloc[-1] if self.data is not None else 0
+        
+            # Get earnings estimates from the analysis dataframe if available
+            eps_current_year = None
+            eps_next_year = None
+            if analysis is not None and not analysis.empty:
+                # These are typical column names in the analysis dataframe
+                if 'EpsEstimateCurrentYear' in analysis.columns:
+                    eps_current_year = analysis['EpsEstimateCurrentYear'].iloc[-1] if not analysis['EpsEstimateCurrentYear'].empty else None
+            if 'EpsEstimateNextYear' in analysis.columns:
+                    eps_next_year = analysis['EpsEstimateNextYear'].iloc[-1] if not analysis['EpsEstimateNextYear'].empty else None
+        
             analyst_data = {
                 'current_price': current_price,
-                'target_mean': info.get('targetMeanPrice'),
-                'target_high': info.get('targetHighPrice'),
-                'target_low': info.get('targetLowPrice'),
-                'target_median': info.get('targetMedianPrice'),
-                'recommendation': info.get('recommendationKey', 'hold'),
+                'target_mean': info.get('targetMeanPrice', None),
+                'target_high': info.get('targetHighPrice', None),
+                'target_low': info.get('targetLowPrice', None),
+                'recommendation': info.get('recommendationKey', 'N/A'),
                 'num_analysts': info.get('numberOfAnalystOpinions', 0),
-                'current_year_eps': info.get('epsCurrentYear'),
-                'next_year_eps': info.get('epsForward'),
-                'eps_growth': info.get('earningsGrowth'),
-                'revenue_growth': info.get('revenueGrowth'),
-                'forward_pe': info.get('forwardPE'),
-                'peg_ratio': info.get('pegRatio'),
-                'upside_percent': None,
-                'risk_rating': 'N/A',
-                'recommendation_text': 'N/A',
-                'target_range': None,
-                'target_range_percent': None,
-                'recent_recommendations': [],
-                'recommendation_trend': {},
-                'consensus_score': None
+                'current_year_eps': eps_current_year,
+                'next_year_eps': eps_next_year
             }
         
             # Calculate upside
             if analyst_data['target_mean'] and current_price > 0:
                 upside = ((analyst_data['target_mean'] - current_price) / current_price) * 100
                 analyst_data['upside_percent'] = round(upside, 2)
-                
-                if upside > 20:
-                    analyst_data['risk_rating'] = 'High Reward'
-                elif upside > 10:
-                    analyst_data['risk_rating'] = 'Moderate Reward'
-                elif upside > 0:
-                    analyst_data['risk_rating'] = 'Low Reward'
-                else:
-                    analyst_data['risk_rating'] = 'Overvalued'
-
-            # Format recommendation
-            rec_map = {
-                'strong_buy': 'Strong Buy', 'buy': 'Buy', 'outperform': 'Outperform',
-                'hold': 'Hold', 'underperform': 'Underperform', 'sell': 'Sell'
-            }
-            rec_key = analyst_data['recommendation']
-            if rec_key:
-                analyst_data['recommendation_text'] = rec_map.get(rec_key.lower(), rec_key.title())
             else:
-                analyst_data['recommendation_text'] = 'N/A'
+                analyst_data['upside_percent'] = None
             
-            # Calculate target range
-            if analyst_data['target_high'] and analyst_data['target_low']:
-                target_range = analyst_data['target_high'] - analyst_data['target_low']
-                analyst_data['target_range'] = target_range
-                if analyst_data['target_mean']:
-                    analyst_data['target_range_percent'] = (target_range / analyst_data['target_mean']) * 100
-            
-            # Try to get recommendations trend
-            try:
-                recommendations = self.ticker.recommendations
-                if recommendations is not None and not recommendations.empty:
-                    recent = recommendations.tail(10)
-                    analyst_data['recent_recommendations'] = recent.to_dict('records')
-                    
-                    if 'To Grade' in recent.columns:
-                        rec_counts = recent['To Grade'].value_counts().to_dict()
-                        analyst_data['recommendation_trend'] = rec_counts
-                        
-                        grade_weights = {
-                            'Strong Buy': 5, 'Buy': 4, 'Outperform': 4,
-                            'Hold': 3, 'Neutral': 3, 'Underperform': 2, 'Sell': 1
-                        }
-                        total_score = sum(grade_weights.get(grade, 3) * count for grade, count in rec_counts.items())
-                        total_recs = sum(rec_counts.values())
-                        if total_recs > 0:
-                            analyst_data['consensus_score'] = round(total_score / total_recs, 2)
-            except:
-                pass
-        
-            # Try to get earnings calendar
-            try:
-                calendar = self.ticker.calendar
-                if calendar is not None and not calendar.empty:
-                    if len(calendar) > 0:
-                        if 'Earnings Date' in calendar.columns:
-                            analyst_data['next_earnings_date'] = str(calendar['Earnings Date'].iloc[0])[:10]
-                        if 'Earnings Average' in calendar.columns:
-                            analyst_data['earnings_estimate'] = calendar['Earnings Average'].iloc[0]
-            except:
-                pass
+            # Get recent recommendations trend
+            if recommendations is not None and not recommendations.empty:
+                recent_rec = recommendations.tail(5)
+                analyst_data['recent_recommendations'] = recent_rec.to_dict('records')
+            else:
+                analyst_data['recent_recommendations'] = []
             
             return analyst_data
         
         except Exception as e:
-            # Fallback
-            return {
-                'current_price': self.data['Close'].iloc[-1] if self.data is not None and not self.data.empty else 0,
-                'target_mean': None,
-                'recommendation_text': 'Not Available',
-                'num_analysts': 0,
-                'upside_percent': None,
-                'risk_rating': 'N/A'
-            }
-
-        # Fallback to basic data
-        try:
-            info = self.ticker.info
-            current_price = self.data['Close'].iloc[-1] if self.data is not None and not self.data.empty else 0
+    
+            # Fallback to basic info if detailed analysis fails
+            try:
+                info = self.ticker.info
+                current_price = self.data['Close'].iloc[-1] if self.data is not None else 0
             
-            return {
-                'current_price': current_price,
-                'target_mean': info.get('targetMeanPrice'),
-                'target_high': info.get('targetHighPrice'),
-                'target_low': info.get('targetLowPrice'),
-                'recommendation': info.get('recommendationKey', 'N/A'),
-                'recommendation_text': info.get('recommendationKey', 'N/A').title() if info.get('recommendationKey') else 'N/A',
-                'num_analysts': info.get('numberOfAnalystOpinions', 0),
-                'upside_percent': None,
-                'error': str(e)
-            }
-        except:
-            return {
-                'current_price': self.data['Close'].iloc[-1] if self.data is not None and not self.data.empty else 0,
-                'target_mean': None,
-                'recommendation_text': 'Not Available',
-                'num_analysts': 0,
-                'upside_percent': None
-            }
+                return {
+                    'current_price': current_price,
+                    'target_mean': info.get('targetMeanPrice', None),
+                    'target_high': info.get('targetHighPrice', None),
+                    'target_low': info.get('targetLowPrice', None),
+                    'recommendation': info.get('recommendationKey', 'N/A'),
+                    'num_analysts': info.get('numberOfAnalystOpinions', 0),
+                    'upside_percent': None
+                }
+            except:
+                return {
+                    'current_price': self.data['Close'].iloc[-1] if self.data is not None else 0,
+                    'target_mean': None,
+                    'target_high': None,
+                    'target_low': None,
+                    'recommendation': 'N/A',
+                    'num_analysts': 0,
+                    'upside_percent': None
+                }
     
     def format_market_cap(self, market_cap):
         """Format market cap to readable string"""
@@ -2054,455 +1989,245 @@ def main():
                 with price_cols[4]:
                     st.metric("52W Low", f"₹{info.get('52w_low', 0):.2f}")
 
-                # ==================== ADVANCED ANALYST FORECASTS SECTION ====================
-
-st.markdown('<div class="sub-header">📊 Analyst Forecasts & Estimates</div>', unsafe_allow_html=True)
-
-try:
-    forecasts = analyzer.get_analyst_forecasts()
-    
-    # Check if we have meaningful data
-    if forecasts.get('num_analysts', 0) > 0 or forecasts.get('target_mean'):
-        
-        # ========== ROW 1: Price Targets & Recommendations ==========
-        st.markdown("#### 🎯 Price Targets & Analyst Consensus")
-        col1, col2, col3, col4, col5 = st.columns(5)
-        
-        with col1:
-            rec_text = forecasts.get('recommendation_text', 'N/A')
-            # Color code the recommendation
-            if rec_text in ['Strong Buy', 'Buy', 'Outperform']:
-                rec_color = '🟢'
-            elif rec_text in ['Hold', 'Neutral']:
-                rec_color = '🟡'
-            else:
-                rec_color = '🔴'
-            st.metric("Consensus", f"{rec_color} {rec_text}")
-        
-        with col2:
-            num_analysts = forecasts.get('num_analysts', 0)
-            st.metric("Analysts Covering", f"{num_analysts}")
-        
-        with col3:
-            target_mean = forecasts.get('target_mean')
-            if target_mean:
-                st.metric("Avg Target", f"₹{target_mean:,.2f}")
-            else:
-                st.metric("Avg Target", "N/A")
-        
-        with col4:
-            upside = forecasts.get('upside_percent')
-            if upside is not None:
-                delta_color = "normal" if upside >= 0 else "inverse"
-                st.metric("Upside/Downside", f"{upside:+.1f}%", delta_color=delta_color)
-            else:
-                st.metric("Upside/Downside", "N/A")
-        
-        with col5:
-            risk_rating = forecasts.get('risk_rating', 'N/A')
-            st.metric("Risk/Reward", risk_rating)
-        
-        # ========== ROW 2: Target Range ==========
-        if forecasts.get('target_high') and forecasts.get('target_low'):
-            st.markdown("#### 📈 Price Target Range")
-            col1, col2, col3, col4 = st.columns(4)
-            
-            with col1:
-                st.metric("Target High", f"₹{forecasts['target_high']:,.2f}")
-            with col2:
-                st.metric("Target Mean", f"₹{forecasts['target_mean']:,.2f}")
-            with col3:
-                st.metric("Target Low", f"₹{forecasts['target_low']:,.2f}")
-            with col4:
-                target_range_pct = forecasts.get('target_range_percent')
-                if target_range_pct:
-                    st.metric("Analyst Spread", f"{target_range_pct:.1f}%")
-                else:
-                    st.metric("Analyst Spread", "N/A")
-        
-        # ========== ROW 3: Earnings Estimates ==========
-        st.markdown("#### 💰 Earnings & Revenue Estimates")
-        col1, col2, col3, col4 = st.columns(4)
-        
-        with col1:
-            eps_current = forecasts.get('current_year_eps')
-            if eps_current:
-                st.metric("Current Year EPS", f"₹{eps_current:.2f}")
-            else:
-                st.metric("Current Year EPS", "N/A")
-        
-        with col2:
-            eps_next = forecasts.get('next_year_eps')
-            if eps_next:
-                growth_rate = None
-                if eps_current and eps_current > 0:
-                    growth_rate = ((eps_next - eps_current) / eps_current) * 100
-                st.metric("Next Year EPS", f"₹{eps_next:.2f}", 
-                         f"{growth_rate:+.1f}%" if growth_rate else None)
-            else:
-                st.metric("Next Year EPS", "N/A")
-        
-        with col3:
-            eps_growth = forecasts.get('earnings_growth')
-            if eps_growth:
-                st.metric("EPS Growth Rate", f"{eps_growth*100:.1f}%")
-            else:
-                st.metric("EPS Growth Rate", "N/A")
-        
-        with col4:
-            revenue_growth = forecasts.get('revenue_growth')
-            if revenue_growth:
-                st.metric("Revenue Growth", f"{revenue_growth*100:.1f}%")
-            else:
-                st.metric("Revenue Growth", "N/A")
-        
-        # ========== ROW 4: Valuation Metrics ==========
-        st.markdown("#### 📊 Forward Valuation Metrics")
-        col1, col2, col3, col4 = st.columns(4)
-        
-        with col1:
-            forward_pe = forecasts.get('forward_pe')
-            if forward_pe:
-                st.metric("Forward P/E", f"{forward_pe:.2f}")
-            else:
-                st.metric("Forward P/E", "N/A")
-        
-        with col2:
-            peg = forecasts.get('peg_ratio')
-            if peg:
-                peg_signal = "Undervalued" if peg < 1 else "Fairly Valued" if peg < 2 else "Overvalued"
-                st.metric("PEG Ratio", f"{peg:.2f}", peg_signal)
-            else:
-                st.metric("PEG Ratio", "N/A")
-        
-        with col3:
-            next_earnings = forecasts.get('next_earnings_date')
-            if next_earnings:
-                st.metric("Next Earnings", str(next_earnings)[:10])
-            else:
-                st.metric("Next Earnings", "N/A")
-        
-        with col4:
-            earnings_est = forecasts.get('earnings_estimate')
-            if earnings_est:
-                st.metric("Est. EPS (Next Qtr)", f"₹{earnings_est:.2f}")
-            else:
-                st.metric("Est. EPS (Next Qtr)", "N/A")
-        
-        # ========== RECOMMENDATION TREND CHART ==========
-        if forecasts.get('recommendation_trend'):
-            st.markdown("#### 📉 Recent Analyst Recommendation Trend")
-            
-            trend_data = forecasts['recommendation_trend']
-            
-            # Create bar chart
-            fig_trend = go.Figure(data=[
-                go.Bar(
-                    x=list(trend_data.keys()),
-                    y=list(trend_data.values()),
-                    marker=dict(
-                        color=['#00cc00' if 'Buy' in k or 'Outperform' in k 
-                               else '#ff9900' if 'Hold' in k or 'Neutral' in k 
-                               else '#ff0000' 
-                               for k in trend_data.keys()]
-                    ),
-                    text=list(trend_data.values()),
-                    textposition='auto'
-                )
-            ])
-            
-            fig_trend.update_layout(
-                title="Distribution of Recent Analyst Recommendations",
-                xaxis_title="Recommendation",
-                yaxis_title="Number of Analysts",
-                height=300,
-                template='plotly_white'
-            )
-            
-            st.plotly_chart(fig_trend, use_container_width=True)
-            
-            # Consensus score
-            consensus_score = forecasts.get('consensus_score')
-            if consensus_score:
-                st.markdown(f"""
-                **Consensus Score:** {consensus_score:.2f}/5.0  
-                *(5=Strong Buy, 4=Buy, 3=Hold, 2=Underperform, 1=Sell)*
-                """)
-        
-        # ========== RECENT ANALYST ACTIONS ==========
-        if forecasts.get('recent_recommendations'):
-            with st.expander("📋 Recent Analyst Actions (Last 10)"):
-                recent_recs = forecasts['recent_recommendations']
+                # ==================== ANALYST FORECASTS SECTION ====================
+              
+                st.markdown('<div class="sub-header">📰 Analyst Forecasts & Estimates</div>', unsafe_allow_html=True)
                 
-                # Create DataFrame
-                rec_df = pd.DataFrame(recent_recs)
+                # Fetch the forecast data
+                try:
+                    forecasts = analyzer.get_analyst_forecasts()
                 
-                # Format and display
-                if not rec_df.empty:
-                    # Select relevant columns
-                    display_cols = []
-                    if 'Date' in rec_df.columns or rec_df.index.name:
-                        rec_df['Date'] = rec_df.index if 'Date' not in rec_df.columns else rec_df['Date']
-                        rec_df['Date'] = pd.to_datetime(rec_df['Date']).dt.strftime('%Y-%m-%d')
-                        display_cols.append('Date')
+                    # Check if we have meaningful data to display (more than just 'N/A')
+                    if forecasts.get('num_analysts', 0) > 0:
                     
-                    for col in ['Firm', 'To Grade', 'From Grade', 'Action']:
-                        if col in rec_df.columns:
-                            display_cols.append(col)
-                    
-                    if display_cols:
-                        st.dataframe(
-                            rec_df[display_cols].head(10),
-                            use_container_width=True,
-                            hide_index=True
-                        )
-                else:
-                    st.info("No recent analyst actions available.")
-        
-        # ========== INTERPRETATION & INSIGHTS ==========
-        st.markdown("#### 💡 Analyst Insights")
-        
-        insights = []
-        
-        # Upside insight
-        if upside:
-            if upside > 20:
-                insights.append(f"✅ **Strong Upside**: Analysts see {upside:.1f}% upside potential - significant room for growth")
-            elif upside > 10:
-                insights.append(f"✅ **Moderate Upside**: {upside:.1f}% upside indicates positive outlook")
-            elif upside > 0:
-                insights.append(f"⚠️ **Limited Upside**: Only {upside:.1f}% upside - stock fairly valued")
-            else:
-                insights.append(f"🔴 **Overvalued**: {upside:.1f}% indicates stock may be overpriced")
-        
-        # Consensus insight
-        if rec_text:
-            if rec_text in ['Strong Buy', 'Buy']:
-                insights.append("✅ **Bullish Consensus**: Analysts recommend buying")
-            elif rec_text in ['Hold', 'Neutral']:
-                insights.append("⚠️ **Neutral Stance**: Analysts suggest holding current positions")
-            else:
-                insights.append("🔴 **Bearish Consensus**: Analysts recommend caution or selling")
-        
-        # Growth insight
-        if eps_growth and eps_growth > 0:
-            insights.append(f"📈 **Positive Growth**: {eps_growth*100:.1f}% earnings growth expected")
-        elif eps_growth and eps_growth < 0:
-            insights.append(f"📉 **Negative Growth**: {eps_growth*100:.1f}% earnings decline expected")
-        
-        # PEG insight
-        if peg:
-            if peg < 1:
-                insights.append(f"💰 **Undervalued**: PEG ratio of {peg:.2f} suggests stock is undervalued relative to growth")
-            elif peg > 2:
-                insights.append(f"⚠️ **Expensive**: PEG ratio of {peg:.2f} suggests stock may be overvalued")
-        
-        # Analyst coverage insight
-        if num_analysts:
-            if num_analysts > 15:
-                insights.append(f"👥 **High Coverage**: {num_analysts} analysts covering - well-researched stock")
-            elif num_analysts < 5:
-                insights.append(f"⚠️ **Low Coverage**: Only {num_analysts} analysts - less market consensus")
-        
-        # Display insights
-        if insights:
-            for insight in insights:
-                st.markdown(f"• {insight}")
-        else:
-            st.info("Limited analyst data available for detailed insights.")
-    
-    else:
-        st.info("""
-        **Limited Analyst Coverage**  
-        This stock has limited analyst coverage. This is common for:
-        - Smaller market cap companies
-        - Recently listed stocks
-        - Less liquid securities
-        
-        **Alternative Analysis**: Use technical indicators and fundamental metrics shown above.
-        """)
-
-except Exception as e:
-    st.error(f"Could not fetch analyst forecasts: {str(e)}")
-    st.info("Try analyzing a large-cap stock like RELIANCE, TCS, or HDFCBANK for comprehensive analyst data.")
+                        # First row: Recommendations and Price Targets
+                        col1, col2, col3, col4 = st.columns(4)
+                        with col1:
+                            st.metric("Analyst Consensus", forecasts.get('recommendation', 'N/A'))
+                        with col2:
+                            st.metric("No. of Analysts", forecasts.get('num_analysts', 'N/A'))
+                        with col3:
+                            target = forecasts.get('target_mean')
+                            display_target = f"₹{target:,.0f}" if isinstance(target, (int, float)) else 'N/A'
+                            st.metric("Avg. Price Target", display_target)
+                        with col4:
+                            current_price = analyzer.data['Close'].iloc[-1] if analyzer.data is not None else 0
+                            if isinstance(target, (int, float)) and current_price > 0:
+                                upside = ((target - current_price) / current_price) * 100
+                                st.metric("Upside Potential", f"{upside:+.1f}%")
+                            else:
+                                st.metric("Upside Potential", "N/A")
+                        
+                        # Second row: Earnings and Growth Estimates
+                        st.markdown("**Earnings & Growth Estimates**")
+                        col5, col6, col7, col8 = st.columns(4)
+                        with col5:
+                            eps = forecasts.get('current_year_eps')
+                            display_eps = f"₹{eps:.1f}" if isinstance(eps, (int, float)) else 'N/A'
+                            st.metric("Current Year EPS Est.", display_eps)
+                        with col6:
+                            eps_next = forecasts.get('next_year_eps')
+                            display_eps_next = f"₹{eps_next:.1f}" if isinstance(eps_next, (int, float)) else 'N/A'
+                            st.metric("Next Year EPS Est.", display_eps_next)
+                        with col7:
+                            growth = forecasts.get('eps_growth')
+                            display_growth = f"{growth*100:.1f}%" if isinstance(growth, (int, float)) else 'N/A'
+                            st.metric("EPS Growth (Est.)", display_growth)
+                        with col8:
+                            rev = forecasts.get('current_year_rev')
+                            # Format large revenue numbers in Cr or Lakh Cr
+                            if isinstance(rev, (int, float)):
+                                if rev >= 1e10:
+                                    display_rev = f"₹{rev/1e10:.1f} Cr"
+                                elif rev >= 1e7:
+                                    display_rev = f"₹{rev/1e7:.0f} Lakh"
+                                else:
+                                    display_rev = f"₹{rev:,.0f}"
+                            else:
+                                display_rev = 'N/A'
+                            st.metric("Current Year Rev. Est.", display_rev)
                 
-            
-                
-# Trading Signal
-st.markdown('<div class="sub-header">🎯 Trading Signal & Analysis</div>', unsafe_allow_html=True)
-                
-overall, signals, score, color = analyzer.get_trading_signal()
-
-signal_cols = st.columns([1, 2])
-with signal_cols[0]:
-    st.markdown(f"""
-    <div style="background-color: {color}; padding: 20px; border-radius: 10px; text-align: center;">
-         <h2 style="margin: 0; color: white;">{overall}</h2>
-         <p style="margin: 5px 0; font-size: 18px; color: white;">Score: {score:.1f}/100</p>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    # Gauge chart for signal strength
-    fig_gauge = go.Figure(go.Indicator(
-        mode="gauge+number",
-        value=score,
-        domain={'x': [0, 1], 'y': [0, 1]},
-        title={'text': "Signal Strength"},
-        gauge={
-            'axis': {'range': [-50, 100]},
-            'bar': {'color': "blue"},
-            'steps': [
-                {'range': [-50, 0], 'color': "red"},
-                {'range': [0, 50], 'color': "yellow"},
-                {'range': [50, 100], 'color': "green"}
-            ],
-            'threshold': {
-                'line': {'color': "black", 'width': 4},
-                    'thickness': 0.75,
-                    'value': 50
-            }
-        }
-    ))
-                    
-    fig_gauge.update_layout(height=200, margin=dict(t=30, b=10))
-    st.plotly_chart(fig_gauge, use_container_width=True)
-                
-    with signal_cols[1]:
-        with st.expander("📋 Detailed Analysis Signals", expanded=True):
-            for signal in signals:
-                st.markdown(f"• {signal}")
-                
-    # Pattern Detection
-            if show_patterns:
-                st.markdown('<div class="sub-header">📈 Pattern Detection</div>', unsafe_allow_html=True)
-                    
-                pattern_tabs = st.tabs(["Dan Zanger Patterns", "Qullamaggie Patterns", "All Patterns"])
-                    
-                with pattern_tabs[0]:
-                    zanger_patterns = analyzer.detect_chart_patterns()
-                    if zanger_patterns:
-                        for pattern in zanger_patterns:
-                            st.markdown(create_pattern_summary_card(pattern), unsafe_allow_html=True)
-                                
-                            with st.expander("View Rules & Details"):
-                                st.markdown("**Rules to Follow:**")
-                                for rule in pattern.get('rules', []):
-                                    st.markdown(f"• {rule}")
                     else:
-                        st.info("No Dan Zanger patterns detected in current timeframe.")
+                        st.info("""
+                    **Note:** Detailed analyst forecast data is not widely published for this stock.
+                    This is common for smaller market cap companies. Fundamental data like P/E ratio and sector information is still available above.
+                    """)
+                except Exception as e:
+                    st.warning(f"Could not fetch analyst forecasts: {str(e)}")
+                
+                # Trading Signal
+                st.markdown('<div class="sub-header">🎯 Trading Signal & Analysis</div>', unsafe_allow_html=True)
+                
+                overall, signals, score, color = analyzer.get_trading_signal()
+                
+                signal_cols = st.columns([1, 2])
+                with signal_cols[0]:
+                    st.markdown(f"""
+                    <div style="background-color: {color}; padding: 20px; border-radius: 10px; text-align: center;">
+                        <h2 style="margin: 0; color: white;">{overall}</h2>
+                        <p style="margin: 5px 0; font-size: 18px; color: white;">Score: {score:.1f}/100</p>
+                    </div>
+                    """, unsafe_allow_html=True)
                     
-                with pattern_tabs[1]:
-                    swing_patterns = analyzer.detect_swing_patterns()
-                    if swing_patterns:
-                        for pattern in swing_patterns:
-                            st.markdown(create_pattern_summary_card(pattern), unsafe_allow_html=True)
-    
-                            with st.expander("View Rules & Details"):
-                                st.markdown("**Rules to Follow:**")
-                                for rule in pattern.get('rules', []):
-                                    st.markdown(f"• {rule}")
-                    else:
-                        st.info("No Qullamaggie swing patterns detected in current timeframe.")
-                    
-                with pattern_tabs[2]:
-                    all_patterns = zanger_patterns + swing_patterns
-                    if all_patterns:
-                        # Create pattern summary table
-                        pattern_df = pd.DataFrame([{
-                            'Pattern': p['pattern'],
-                            'Signal': p['signal'],
-                            'Confidence': p['confidence'],
-                            'Score': p['score'],
-                            'Description': p['description']
-                        } for p in all_patterns])
-                            
-                        st.dataframe(
-                            pattern_df,
-                            use_container_width=True,
-                            column_config={
-                                "Pattern": st.column_config.TextColumn("Pattern"),
-                                "Signal": st.column_config.TextColumn("Signal"),
-                                "Confidence": st.column_config.TextColumn("Confidence"),
-                                "Score": st.column_config.ProgressColumn(
-                                    "Score",
-                                    format="%.2f",
-                                    min_value=0,
-                                    max_value=1.0
-                                ),
-                                "Description": st.column_config.TextColumn("Description", width="large")
+                    # Gauge chart for signal strength
+                    fig_gauge = go.Figure(go.Indicator(
+                        mode="gauge+number",
+                        value=score,
+                        domain={'x': [0, 1], 'y': [0, 1]},
+                        title={'text': "Signal Strength"},
+                        gauge={
+                            'axis': {'range': [-50, 100]},
+                            'bar': {'color': "blue"},
+                            'steps': [
+                                {'range': [-50, 0], 'color': "red"},
+                                {'range': [0, 50], 'color': "yellow"},
+                                {'range': [50, 100], 'color': "green"}
+                            ],
+                            'threshold': {
+                                'line': {'color': "black", 'width': 4},
+                                'thickness': 0.75,
+                                'value': 50
                             }
-                        )
-                    else:
-                        st.warning("No trading patterns detected.")
+                        }
+                    ))
+                    
+                    fig_gauge.update_layout(height=200, margin=dict(t=30, b=10))
+                    st.plotly_chart(fig_gauge, use_container_width=True)
                 
-    # Risk Management
-    if show_risk:
-            st.markdown('<div class="sub-header">⚠️ Advanced Risk Management</div>', unsafe_allow_html=True)
+                with signal_cols[1]:
+                    with st.expander("📋 Detailed Analysis Signals", expanded=True):
+                        for signal in signals:
+                            st.markdown(f"• {signal}")
+                
+                # Pattern Detection
+                if show_patterns:
+                    st.markdown('<div class="sub-header">📈 Pattern Detection</div>', unsafe_allow_html=True)
                     
-                risk_mgmt = analyzer.get_risk_management(portfolio_value)
+                    pattern_tabs = st.tabs(["Dan Zanger Patterns", "Qullamaggie Patterns", "All Patterns"])
                     
-                risk_cols = st.columns(3)
+                    with pattern_tabs[0]:
+                        zanger_patterns = analyzer.detect_chart_patterns()
+                        if zanger_patterns:
+                            for pattern in zanger_patterns:
+                                st.markdown(create_pattern_summary_card(pattern), unsafe_allow_html=True)
+                                with st.expander("View Rules & Details"):
+                                    st.markdown("**Rules to Follow:**")
+                                    for rule in pattern.get('rules', []):
+                                        st.markdown(f"• {rule}")
+                        else:
+                            st.info("No Dan Zanger patterns detected in current timeframe.")
                     
-                with risk_cols[0]:
-                    st.markdown("### Entry & Stops")
-                    st.metric("Entry Price", f"₹{risk_mgmt['entry_price']:.2f}")
+                    with pattern_tabs[1]:
+                        swing_patterns = analyzer.detect_swing_patterns()
+                        if swing_patterns:
+                            for pattern in swing_patterns:
+                                st.markdown(create_pattern_summary_card(pattern), unsafe_allow_html=True)
+                                with st.expander("View Rules & Details"):
+                                    st.markdown("**Rules to Follow:**")
+                                    for rule in pattern.get('rules', []):
+                                        st.markdown(f"• {rule}")
+                        else:
+                            st.info("No Qullamaggie swing patterns detected in current timeframe.")
                     
-                    # Stop loss levels
-                    with st.expander("Stop Loss Levels"):
-                        for level_name, stop_price in risk_mgmt['stop_loss_levels'].items():
-                            stop_percent = ((risk_mgmt['entry_price'] - stop_price) / risk_mgmt['entry_price']) * 100
-                            st.metric(
-                                f"{level_name.title()}",
-                                f"₹{stop_price:.2f}",
-                                f"-{stop_percent:.1f}%"
+                    with pattern_tabs[2]:
+                        all_patterns = zanger_patterns + swing_patterns
+                        if all_patterns:
+                            # Create pattern summary table
+                            pattern_df = pd.DataFrame([{
+                                'Pattern': p['pattern'],
+                                'Signal': p['signal'],
+                                'Confidence': p['confidence'],
+                                'Score': p['score'],
+                                'Description': p['description']
+                            } for p in all_patterns])
+                            
+                            st.dataframe(
+                                pattern_df,
+                                use_container_width=True,
+                                column_config={
+                                    "Pattern": st.column_config.TextColumn("Pattern"),
+                                    "Signal": st.column_config.TextColumn("Signal"),
+                                    "Confidence": st.column_config.TextColumn("Confidence"),
+                                    "Score": st.column_config.ProgressColumn(
+                                        "Score",
+                                        format="%.2f",
+                                        min_value=0,
+                                        max_value=1.0
+                                    ),
+                                    "Description": st.column_config.TextColumn("Description", width="large")
+                                }
                             )
+                        else:
+                            st.warning("No trading patterns detected.")
+                
+                # Risk Management
+                if show_risk:
+                    st.markdown('<div class="sub-header">⚠️ Advanced Risk Management</div>', unsafe_allow_html=True)
                     
-                with risk_cols[1]:
-                    st.markdown("### Position Sizing")
-                    st.metric("Position Size", f"{risk_mgmt['position_size']:,} shares")
-                    st.metric("Position Value", f"₹{risk_mgmt['position_value']:,.2f}")
-                    st.metric("Portfolio Risk", f"{risk_mgmt['portfolio_risk_percent']:.2f}%")
-                    st.metric("Max Drawdown", f"{risk_mgmt['max_drawdown']:.1f}%")
+                    risk_mgmt = analyzer.get_risk_management(portfolio_value)
                     
-                with risk_cols[2]:
-                    st.markdown("### Profit Targets")
-                    for target_name, target_price in risk_mgmt['profit_targets'].items():
-                        if 'target_' in target_name:
-                            target_return = ((target_price - risk_mgmt['entry_price']) / risk_mgmt['entry_price']) * 100
-                            rr_ratio = risk_mgmt['risk_reward_ratios'].get(target_name, 0)
+                    risk_cols = st.columns(3)
+                    
+                    with risk_cols[0]:
+                        st.markdown("### Entry & Stops")
+                        st.metric("Entry Price", f"₹{risk_mgmt['entry_price']:.2f}")
+                        
+                        # Stop loss levels
+                        with st.expander("Stop Loss Levels"):
+                            for level_name, stop_price in risk_mgmt['stop_loss_levels'].items():
+                                stop_percent = ((risk_mgmt['entry_price'] - stop_price) / risk_mgmt['entry_price']) * 100
+                                st.metric(
+                                    f"{level_name.title()}",
+                                    f"₹{stop_price:.2f}",
+                                    f"-{stop_percent:.1f}%"
+                                )
+                    
+                    with risk_cols[1]:
+                        st.markdown("### Position Sizing")
+                        st.metric("Position Size", f"{risk_mgmt['position_size']:,} shares")
+                        st.metric("Position Value", f"₹{risk_mgmt['position_value']:,.2f}")
+                        st.metric("Portfolio Risk", f"{risk_mgmt['portfolio_risk_percent']:.2f}%")
+                        st.metric("Max Drawdown", f"{risk_mgmt['max_drawdown']:.1f}%")
+                    
+                    with risk_cols[2]:
+                        st.markdown("### Profit Targets")
+                        for target_name, target_price in risk_mgmt['profit_targets'].items():
+                            if 'target_' in target_name:
+                                target_return = ((target_price - risk_mgmt['entry_price']) / risk_mgmt['entry_price']) * 100
+                                rr_ratio = risk_mgmt['risk_reward_ratios'].get(target_name, 0)
                                 
-                            st.metric(
-                                f"{target_name.replace('_', ' ').title()}",
-                                f"₹{target_price:.2f}",
-                                f"+{target_return:.1f}% (R:R 1:{rr_ratio:.1f})"
-                            )
+                                st.metric(
+                                    f"{target_name.replace('_', ' ').title()}",
+                                    f"₹{target_price:.2f}",
+                                    f"+{target_return:.1f}% (R:R 1:{rr_ratio:.1f})"
+                                )
                     
-                # Risk/Reward Summary
-                st.markdown("#### Risk/Reward Analysis")
-                rr_df = pd.DataFrame([
-                    {
-                        'Target': target_name.replace('_', ' ').title(),
-                        'Price': f"₹{target_price:.2f}",
-                        'Return %': ((target_price - risk_mgmt['entry_price']) / risk_mgmt['entry_price']) * 100,
-                        'Risk/Reward': f"1:{rr_ratio:.1f}"
-                    }
-                    for target_name, target_price in risk_mgmt['profit_targets'].items()
-                    if 'target_' in target_name
-                    for rr_ratio in [risk_mgmt['risk_reward_ratios'].get(target_name, 0)]
-                ])
+                    # Risk/Reward Summary
+                    st.markdown("#### Risk/Reward Analysis")
+                    rr_df = pd.DataFrame([
+                        {
+                            'Target': target_name.replace('_', ' ').title(),
+                            'Price': f"₹{target_price:.2f}",
+                            'Return %': ((target_price - risk_mgmt['entry_price']) / risk_mgmt['entry_price']) * 100,
+                            'Risk/Reward': f"1:{rr_ratio:.1f}"
+                        }
+                        for target_name, target_price in risk_mgmt['profit_targets'].items()
+                        if 'target_' in target_name
+                        for rr_ratio in [risk_mgmt['risk_reward_ratios'].get(target_name, 0)]
+                    ])
                     
-                st.dataframe(rr_df, use_container_width=True, hide_index=True)
+                    st.dataframe(rr_df, use_container_width=True, hide_index=True)
                 
-            # Market Context
-            if show_market:
-                st.markdown('<div class="sub-header">🌐 Market Context Analysis</div>', unsafe_allow_html=True)
+                # Market Context
+                if show_market:
+                    st.markdown('<div class="sub-header">🌐 Market Context Analysis</div>', unsafe_allow_html=True)
                     
-                market_context = analyzer.get_market_context()
-                sector_analysis = analyzer.get_sector_analysis()
+                    market_context = analyzer.get_market_context()
+                    sector_analysis = analyzer.get_sector_analysis()
                     
-                market_cols = st.columns(3)
+                    market_cols = st.columns(3)
                     
-                with market_cols[0]:
+                    with market_cols[0]:
                         st.markdown("### Nifty 50")
                         if market_context:
                             st.metric("Nifty Level", f"₹{market_context['nifty_level']:.2f}")
@@ -2511,7 +2236,7 @@ with signal_cols[0]:
                                      if market_context.get('vix') else 'N/A')
                             st.metric("Market Condition", market_context.get('market_condition', 'N/A'))
                     
-                with market_cols[1]:
+                    with market_cols[1]:
                         st.markdown("### Sector Analysis")
                         if sector_analysis:
                             st.metric("Sector", sector_analysis['sector'])
@@ -2519,7 +2244,7 @@ with signal_cols[0]:
                             st.metric("Sector Return", f"{sector_analysis['sector_return']:.1f}%")
                             st.metric("Relative Strength", sector_analysis['relative_strength'])
                     
-                with market_cols[2]:
+                    with market_cols[2]:
                         st.markdown("### Risk Metrics")
                         if sector_analysis:
                             st.metric("Beta", f"{sector_analysis['beta']:.2f}")
@@ -2527,17 +2252,17 @@ with signal_cols[0]:
                         st.metric("Outperformance", f"{sector_analysis.get('outperformance', 0):.1f}%" 
                                  if sector_analysis else 'N/A')
                 
-            # Advanced Technical Charts
-            if show_advanced:
-                st.markdown('<div class="sub-header">📊 Advanced Technical Charts</div>', unsafe_allow_html=True)
+                # Advanced Technical Charts
+                if show_advanced:
+                    st.markdown('<div class="sub-header">📊 Advanced Technical Charts</div>', unsafe_allow_html=True)
                     
-                chart_tabs = st.tabs(["Price Action & Indicators", "Volume Profile", "Market Structure"])
+                    chart_tabs = st.tabs(["Price Action & Indicators", "Volume Profile", "Market Structure"])
                     
-                with chart_tabs[0]:
+                    with chart_tabs[0]:
                         fig_candlestick = create_candlestick_chart(analyzer)
                         st.plotly_chart(fig_candlestick, use_container_width=True)
                     
-                with chart_tabs[1]:
+                    with chart_tabs[1]:
                         fig_volume_profile = create_volume_profile_chart(analyzer)
                         st.plotly_chart(fig_volume_profile, use_container_width=True)
                         
@@ -2554,7 +2279,7 @@ with signal_cols[0]:
                             with vp_cols[3]:
                                 st.metric("Value Area %", f"{vp['value_area_percentage']:.1f}%")
                     
-                with chart_tabs[2]:
+                    with chart_tabs[2]:
                         # Create market structure analysis
                         st.info("Market structure analysis shows support/resistance levels and key price zones.")
                         
@@ -2574,12 +2299,12 @@ with signal_cols[0]:
                             for i, level in enumerate(sorted(resistance_levels)[:3], 1):
                                 st.metric(f"Resistance {i}", f"₹{level:.2f}")
                 
-            # Technical Indicators Summary
-            st.markdown('<div class="sub-header">📋 Technical Indicators Summary</div>', unsafe_allow_html=True)
+                # Technical Indicators Summary
+                st.markdown('<div class="sub-header">📋 Technical Indicators Summary</div>', unsafe_allow_html=True)
                 
-            current = analyzer.data.iloc[-1]
+                current = analyzer.data.iloc[-1]
                 
-            indicators = {
+                indicators = {
                     'Trend': [
                         ('SMA 20', f"{current['SMA_20']:.2f}", 'Above' if current['Close'] > current['SMA_20'] else 'Below'),
                         ('SMA 50', f"{current['SMA_50']:.2f}", 'Above' if current['Close'] > current['SMA_50'] else 'Below'),
@@ -2613,17 +2338,17 @@ with signal_cols[0]:
                     ]
                 }
                 
-            indicator_cols = st.columns(4)
-            for idx, (category, metrics) in enumerate(indicators.items()):
+                indicator_cols = st.columns(4)
+                for idx, (category, metrics) in enumerate(indicators.items()):
                     with indicator_cols[idx]:
                         st.markdown(f"#### {category}")
                         for metric_name, value, interpretation in metrics:
                             st.metric(metric_name, value, interpretation)
                 
-            # Export Functionality
-            st.markdown('<div class="sub-header">📤 Export Analysis</div>', unsafe_allow_html=True)
+                # Export Functionality
+                st.markdown('<div class="sub-header">📤 Export Analysis</div>', unsafe_allow_html=True)
                 
-            col1, col2, col3 = st.columns(3)
+                col1, col2, col3 = st.columns(3)
                 
                 with col1:
                     # Export to CSV
