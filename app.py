@@ -1728,7 +1728,7 @@ def create_candlestick_chart(analyzer):
     
     # Update layout
     fig.update_layout(
-        title=f'{analyzer.symbol} - Advanced Technical Analysis',
+        title=f'',
         xaxis_rangeslider_visible=False,
         height=1400,
         showlegend=True,
