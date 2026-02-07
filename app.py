@@ -2407,33 +2407,33 @@ with signal_cols[0]:
                 with pattern_tabs[2]:
                     all_patterns = zanger_patterns + swing_patterns
                     if all_patterns:
-                            # Create pattern summary table
-                            pattern_df = pd.DataFrame([{
-                                'Pattern': p['pattern'],
-                                'Signal': p['signal'],
-                                'Confidence': p['confidence'],
-                                'Score': p['score'],
-                                'Description': p['description']
-                            } for p in all_patterns])
+                        # Create pattern summary table
+                        pattern_df = pd.DataFrame([{
+                            'Pattern': p['pattern'],
+                            'Signal': p['signal'],
+                            'Confidence': p['confidence'],
+                            'Score': p['score'],
+                            'Description': p['description']
+                        } for p in all_patterns])
                             
-                            st.dataframe(
-                                pattern_df,
-                                use_container_width=True,
-                                column_config={
-                                    "Pattern": st.column_config.TextColumn("Pattern"),
-                                    "Signal": st.column_config.TextColumn("Signal"),
-                                    "Confidence": st.column_config.TextColumn("Confidence"),
-                                    "Score": st.column_config.ProgressColumn(
-                                        "Score",
-                                        format="%.2f",
-                                        min_value=0,
-                                        max_value=1.0
-                                    ),
-                                    "Description": st.column_config.TextColumn("Description", width="large")
-                                }
-                            )
-                        else:
-                            st.warning("No trading patterns detected.")
+                        st.dataframe(
+                            pattern_df,
+                            use_container_width=True,
+                            column_config={
+                                "Pattern": st.column_config.TextColumn("Pattern"),
+                                "Signal": st.column_config.TextColumn("Signal"),
+                                "Confidence": st.column_config.TextColumn("Confidence"),
+                                "Score": st.column_config.ProgressColumn(
+                                    "Score",
+                                    format="%.2f",
+                                    min_value=0,
+                                    max_value=1.0
+                                ),
+                                "Description": st.column_config.TextColumn("Description", width="large")
+                            }
+                        )
+                    else:
+                        st.warning("No trading patterns detected.")
                 
     # Risk Management
     if show_risk:
