@@ -2380,27 +2380,29 @@ with signal_cols[0]:
                     
                 with pattern_tabs[0]:
                     zanger_patterns = analyzer.detect_chart_patterns()
-                        if zanger_patterns:
-                            for pattern in zanger_patterns:
-                                st.markdown(create_pattern_summary_card(pattern), unsafe_allow_html=True)
-                                with st.expander("View Rules & Details"):
-                                    st.markdown("**Rules to Follow:**")
-                                    for rule in pattern.get('rules', []):
-                                        st.markdown(f"• {rule}")
-                        else:
-                            st.info("No Dan Zanger patterns detected in current timeframe.")
+                    if zanger_patterns:
+                        for pattern in zanger_patterns:
+                            st.markdown(create_pattern_summary_card(pattern), unsafe_allow_html=True)
+                                
+                            with st.expander("View Rules & Details"):
+                                st.markdown("**Rules to Follow:**")
+                                for rule in pattern.get('rules', []):
+                                    st.markdown(f"• {rule}")
+                    else:
+                        st.info("No Dan Zanger patterns detected in current timeframe.")
                     
                 with pattern_tabs[1]:
                     swing_patterns = analyzer.detect_swing_patterns()
-                        if swing_patterns:
-                            for pattern in swing_patterns:
-                                st.markdown(create_pattern_summary_card(pattern), unsafe_allow_html=True)
-                                with st.expander("View Rules & Details"):
-                                    st.markdown("**Rules to Follow:**")
-                                    for rule in pattern.get('rules', []):
-                                        st.markdown(f"• {rule}")
-                        else:
-                            st.info("No Qullamaggie swing patterns detected in current timeframe.")
+                    if swing_patterns:
+                        for pattern in swing_patterns:
+                            st.markdown(create_pattern_summary_card(pattern), unsafe_allow_html=True)
+    
+                            with st.expander("View Rules & Details"):
+                                st.markdown("**Rules to Follow:**")
+                                for rule in pattern.get('rules', []):
+                                    st.markdown(f"• {rule}")
+                    else:
+                        st.info("No Qullamaggie swing patterns detected in current timeframe.")
                     
                 with pattern_tabs[2]:
                     all_patterns = zanger_patterns + swing_patterns
@@ -2433,74 +2435,74 @@ with signal_cols[0]:
                         else:
                             st.warning("No trading patterns detected.")
                 
-                # Risk Management
-                if show_risk:
-                    st.markdown('<div class="sub-header">⚠️ Advanced Risk Management</div>', unsafe_allow_html=True)
+    # Risk Management
+    if show_risk:
+            st.markdown('<div class="sub-header">⚠️ Advanced Risk Management</div>', unsafe_allow_html=True)
                     
-                    risk_mgmt = analyzer.get_risk_management(portfolio_value)
+                risk_mgmt = analyzer.get_risk_management(portfolio_value)
                     
-                    risk_cols = st.columns(3)
+                risk_cols = st.columns(3)
                     
-                    with risk_cols[0]:
-                        st.markdown("### Entry & Stops")
-                        st.metric("Entry Price", f"₹{risk_mgmt['entry_price']:.2f}")
-                        
-                        # Stop loss levels
-                        with st.expander("Stop Loss Levels"):
-                            for level_name, stop_price in risk_mgmt['stop_loss_levels'].items():
-                                stop_percent = ((risk_mgmt['entry_price'] - stop_price) / risk_mgmt['entry_price']) * 100
-                                st.metric(
-                                    f"{level_name.title()}",
-                                    f"₹{stop_price:.2f}",
-                                    f"-{stop_percent:.1f}%"
-                                )
+                with risk_cols[0]:
+                    st.markdown("### Entry & Stops")
+                    st.metric("Entry Price", f"₹{risk_mgmt['entry_price']:.2f}")
                     
-                    with risk_cols[1]:
-                        st.markdown("### Position Sizing")
-                        st.metric("Position Size", f"{risk_mgmt['position_size']:,} shares")
-                        st.metric("Position Value", f"₹{risk_mgmt['position_value']:,.2f}")
-                        st.metric("Portfolio Risk", f"{risk_mgmt['portfolio_risk_percent']:.2f}%")
-                        st.metric("Max Drawdown", f"{risk_mgmt['max_drawdown']:.1f}%")
+                    # Stop loss levels
+                    with st.expander("Stop Loss Levels"):
+                        for level_name, stop_price in risk_mgmt['stop_loss_levels'].items():
+                            stop_percent = ((risk_mgmt['entry_price'] - stop_price) / risk_mgmt['entry_price']) * 100
+                            st.metric(
+                                f"{level_name.title()}",
+                                f"₹{stop_price:.2f}",
+                                f"-{stop_percent:.1f}%"
+                            )
                     
-                    with risk_cols[2]:
-                        st.markdown("### Profit Targets")
-                        for target_name, target_price in risk_mgmt['profit_targets'].items():
-                            if 'target_' in target_name:
-                                target_return = ((target_price - risk_mgmt['entry_price']) / risk_mgmt['entry_price']) * 100
-                                rr_ratio = risk_mgmt['risk_reward_ratios'].get(target_name, 0)
+                with risk_cols[1]:
+                    st.markdown("### Position Sizing")
+                    st.metric("Position Size", f"{risk_mgmt['position_size']:,} shares")
+                    st.metric("Position Value", f"₹{risk_mgmt['position_value']:,.2f}")
+                    st.metric("Portfolio Risk", f"{risk_mgmt['portfolio_risk_percent']:.2f}%")
+                    st.metric("Max Drawdown", f"{risk_mgmt['max_drawdown']:.1f}%")
+                    
+                with risk_cols[2]:
+                    st.markdown("### Profit Targets")
+                    for target_name, target_price in risk_mgmt['profit_targets'].items():
+                        if 'target_' in target_name:
+                            target_return = ((target_price - risk_mgmt['entry_price']) / risk_mgmt['entry_price']) * 100
+                            rr_ratio = risk_mgmt['risk_reward_ratios'].get(target_name, 0)
                                 
-                                st.metric(
-                                    f"{target_name.replace('_', ' ').title()}",
-                                    f"₹{target_price:.2f}",
-                                    f"+{target_return:.1f}% (R:R 1:{rr_ratio:.1f})"
-                                )
+                            st.metric(
+                                f"{target_name.replace('_', ' ').title()}",
+                                f"₹{target_price:.2f}",
+                                f"+{target_return:.1f}% (R:R 1:{rr_ratio:.1f})"
+                            )
                     
-                    # Risk/Reward Summary
-                    st.markdown("#### Risk/Reward Analysis")
-                    rr_df = pd.DataFrame([
-                        {
-                            'Target': target_name.replace('_', ' ').title(),
-                            'Price': f"₹{target_price:.2f}",
-                            'Return %': ((target_price - risk_mgmt['entry_price']) / risk_mgmt['entry_price']) * 100,
-                            'Risk/Reward': f"1:{rr_ratio:.1f}"
-                        }
-                        for target_name, target_price in risk_mgmt['profit_targets'].items()
-                        if 'target_' in target_name
-                        for rr_ratio in [risk_mgmt['risk_reward_ratios'].get(target_name, 0)]
-                    ])
+                # Risk/Reward Summary
+                st.markdown("#### Risk/Reward Analysis")
+                rr_df = pd.DataFrame([
+                    {
+                        'Target': target_name.replace('_', ' ').title(),
+                        'Price': f"₹{target_price:.2f}",
+                        'Return %': ((target_price - risk_mgmt['entry_price']) / risk_mgmt['entry_price']) * 100,
+                        'Risk/Reward': f"1:{rr_ratio:.1f}"
+                    }
+                    for target_name, target_price in risk_mgmt['profit_targets'].items()
+                    if 'target_' in target_name
+                    for rr_ratio in [risk_mgmt['risk_reward_ratios'].get(target_name, 0)]
+                ])
                     
-                    st.dataframe(rr_df, use_container_width=True, hide_index=True)
+                st.dataframe(rr_df, use_container_width=True, hide_index=True)
                 
-                # Market Context
-                if show_market:
-                    st.markdown('<div class="sub-header">🌐 Market Context Analysis</div>', unsafe_allow_html=True)
+            # Market Context
+            if show_market:
+                st.markdown('<div class="sub-header">🌐 Market Context Analysis</div>', unsafe_allow_html=True)
                     
-                    market_context = analyzer.get_market_context()
-                    sector_analysis = analyzer.get_sector_analysis()
+                market_context = analyzer.get_market_context()
+                sector_analysis = analyzer.get_sector_analysis()
                     
-                    market_cols = st.columns(3)
+                market_cols = st.columns(3)
                     
-                    with market_cols[0]:
+                with market_cols[0]:
                         st.markdown("### Nifty 50")
                         if market_context:
                             st.metric("Nifty Level", f"₹{market_context['nifty_level']:.2f}")
@@ -2509,7 +2511,7 @@ with signal_cols[0]:
                                      if market_context.get('vix') else 'N/A')
                             st.metric("Market Condition", market_context.get('market_condition', 'N/A'))
                     
-                    with market_cols[1]:
+                with market_cols[1]:
                         st.markdown("### Sector Analysis")
                         if sector_analysis:
                             st.metric("Sector", sector_analysis['sector'])
@@ -2517,7 +2519,7 @@ with signal_cols[0]:
                             st.metric("Sector Return", f"{sector_analysis['sector_return']:.1f}%")
                             st.metric("Relative Strength", sector_analysis['relative_strength'])
                     
-                    with market_cols[2]:
+                with market_cols[2]:
                         st.markdown("### Risk Metrics")
                         if sector_analysis:
                             st.metric("Beta", f"{sector_analysis['beta']:.2f}")
@@ -2525,17 +2527,17 @@ with signal_cols[0]:
                         st.metric("Outperformance", f"{sector_analysis.get('outperformance', 0):.1f}%" 
                                  if sector_analysis else 'N/A')
                 
-                # Advanced Technical Charts
-                if show_advanced:
-                    st.markdown('<div class="sub-header">📊 Advanced Technical Charts</div>', unsafe_allow_html=True)
+            # Advanced Technical Charts
+            if show_advanced:
+                st.markdown('<div class="sub-header">📊 Advanced Technical Charts</div>', unsafe_allow_html=True)
                     
-                    chart_tabs = st.tabs(["Price Action & Indicators", "Volume Profile", "Market Structure"])
+                chart_tabs = st.tabs(["Price Action & Indicators", "Volume Profile", "Market Structure"])
                     
-                    with chart_tabs[0]:
+                with chart_tabs[0]:
                         fig_candlestick = create_candlestick_chart(analyzer)
                         st.plotly_chart(fig_candlestick, use_container_width=True)
                     
-                    with chart_tabs[1]:
+                with chart_tabs[1]:
                         fig_volume_profile = create_volume_profile_chart(analyzer)
                         st.plotly_chart(fig_volume_profile, use_container_width=True)
                         
@@ -2552,7 +2554,7 @@ with signal_cols[0]:
                             with vp_cols[3]:
                                 st.metric("Value Area %", f"{vp['value_area_percentage']:.1f}%")
                     
-                    with chart_tabs[2]:
+                with chart_tabs[2]:
                         # Create market structure analysis
                         st.info("Market structure analysis shows support/resistance levels and key price zones.")
                         
@@ -2572,12 +2574,12 @@ with signal_cols[0]:
                             for i, level in enumerate(sorted(resistance_levels)[:3], 1):
                                 st.metric(f"Resistance {i}", f"₹{level:.2f}")
                 
-                # Technical Indicators Summary
-                st.markdown('<div class="sub-header">📋 Technical Indicators Summary</div>', unsafe_allow_html=True)
+            # Technical Indicators Summary
+            st.markdown('<div class="sub-header">📋 Technical Indicators Summary</div>', unsafe_allow_html=True)
                 
-                current = analyzer.data.iloc[-1]
+            current = analyzer.data.iloc[-1]
                 
-                indicators = {
+            indicators = {
                     'Trend': [
                         ('SMA 20', f"{current['SMA_20']:.2f}", 'Above' if current['Close'] > current['SMA_20'] else 'Below'),
                         ('SMA 50', f"{current['SMA_50']:.2f}", 'Above' if current['Close'] > current['SMA_50'] else 'Below'),
@@ -2611,17 +2613,17 @@ with signal_cols[0]:
                     ]
                 }
                 
-                indicator_cols = st.columns(4)
-                for idx, (category, metrics) in enumerate(indicators.items()):
+            indicator_cols = st.columns(4)
+            for idx, (category, metrics) in enumerate(indicators.items()):
                     with indicator_cols[idx]:
                         st.markdown(f"#### {category}")
                         for metric_name, value, interpretation in metrics:
                             st.metric(metric_name, value, interpretation)
                 
-                # Export Functionality
-                st.markdown('<div class="sub-header">📤 Export Analysis</div>', unsafe_allow_html=True)
+            # Export Functionality
+            st.markdown('<div class="sub-header">📤 Export Analysis</div>', unsafe_allow_html=True)
                 
-                col1, col2, col3 = st.columns(3)
+            col1, col2, col3 = st.columns(3)
                 
                 with col1:
                     # Export to CSV
