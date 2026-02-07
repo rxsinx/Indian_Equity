@@ -1509,157 +1509,108 @@ class IndianEquityAnalyzer:
             
             # Initialize comprehensive analyst data structure
             analyst_data = {
-                # Price Targets
                 'current_price': current_price,
                 'target_mean': info.get('targetMeanPrice'),
                 'target_high': info.get('targetHighPrice'),
                 'target_low': info.get('targetLowPrice'),
                 'target_median': info.get('targetMedianPrice'),
-                
-                # Recommendations
                 'recommendation': info.get('recommendationKey', 'hold'),
                 'num_analysts': info.get('numberOfAnalystOpinions', 0),
-                
-                # Earnings Estimates (from info)
-                'current_year_eps': None,
-                'next_year_eps': None,
-                'current_quarter_eps': None,
-                'next_quarter_eps': None,
-                'eps_growth_current': None,
-                'eps_growth_next': None,
-                
-                # Revenue Estimates
-                'current_year_revenue': None,
-                'next_year_revenue': None,
-                'revenue_growth_current': None,
-                'revenue_growth_next': None,
-                
-                # Profitability Estimates
+                'current_year_eps': info.get('epsCurrentYear'),
+                'next_year_eps': info.get('epsForward'),
+                'eps_growth': info.get('earningsGrowth'),
+                'revenue_growth': info.get('revenueGrowth'),
                 'forward_pe': info.get('forwardPE'),
                 'peg_ratio': info.get('pegRatio'),
-                
-                # Recent recommendations trend
+                'upside_percent': None,
+                'risk_rating': 'N/A',
+                'recommendation_text': 'N/A',
+                'target_range': None,
+                'target_range_percent': None,
                 'recent_recommendations': [],
                 'recommendation_trend': {},
+                'consensus_score': None
+            }
+        
+            # Calculate upside
+            if analyst_data['target_mean'] and current_price > 0:
+                upside = ((analyst_data['target_mean'] - current_price) / current_price) * 100
+                analyst_data['upside_percent'] = round(upside, 2)
                 
-                # Calculated metrics
+                if upside > 20:
+                    analyst_data['risk_rating'] = 'High Reward'
+                elif upside > 10:
+                    analyst_data['risk_rating'] = 'Moderate Reward'
+                elif upside > 0:
+                    analyst_data['risk_rating'] = 'Low Reward'
+                else:
+                    analyst_data['risk_rating'] = 'Overvalued'
+
+            # Format recommendation
+            rec_map = {
+                'strong_buy': 'Strong Buy', 'buy': 'Buy', 'outperform': 'Outperform',
+                'hold': 'Hold', 'underperform': 'Underperform', 'sell': 'Sell'
+            }
+            rec_key = analyst_data['recommendation']
+            if rec_key:
+                analyst_data['recommendation_text'] = rec_map.get(rec_key.lower(), rec_key.title())
+            else:
+                analyst_data['recommendation_text'] = 'N/A'
+            
+            # Calculate target range
+            if analyst_data['target_high'] and analyst_data['target_low']:
+                target_range = analyst_data['target_high'] - analyst_data['target_low']
+                analyst_data['target_range'] = target_range
+                if analyst_data['target_mean']:
+                    analyst_data['target_range_percent'] = (target_range / analyst_data['target_mean']) * 100
+            
+            # Try to get recommendations trend
+            try:
+                recommendations = self.ticker.recommendations
+                if recommendations is not None and not recommendations.empty:
+                    recent = recommendations.tail(10)
+                    analyst_data['recent_recommendations'] = recent.to_dict('records')
+                    
+                    if 'To Grade' in recent.columns:
+                        rec_counts = recent['To Grade'].value_counts().to_dict()
+                        analyst_data['recommendation_trend'] = rec_counts
+                        
+                        grade_weights = {
+                            'Strong Buy': 5, 'Buy': 4, 'Outperform': 4,
+                            'Hold': 3, 'Neutral': 3, 'Underperform': 2, 'Sell': 1
+                        }
+                        total_score = sum(grade_weights.get(grade, 3) * count for grade, count in rec_counts.items())
+                        total_recs = sum(rec_counts.values())
+                        if total_recs > 0:
+                            analyst_data['consensus_score'] = round(total_score / total_recs, 2)
+            except:
+                pass
+        
+            # Try to get earnings calendar
+            try:
+                calendar = self.ticker.calendar
+                if calendar is not None and not calendar.empty:
+                    if len(calendar) > 0:
+                        if 'Earnings Date' in calendar.columns:
+                            analyst_data['next_earnings_date'] = str(calendar['Earnings Date'].iloc[0])[:10]
+                        if 'Earnings Average' in calendar.columns:
+                            analyst_data['earnings_estimate'] = calendar['Earnings Average'].iloc[0]
+            except:
+                pass
+            
+            return analyst_data
+        
+        except Exception as e:
+            # Fallback
+            return {
+                'current_price': self.data['Close'].iloc[-1] if self.data is not None and not self.data.empty else 0,
+                'target_mean': None,
+                'recommendation_text': 'Not Available',
+                'num_analysts': 0,
                 'upside_percent': None,
                 'risk_rating': 'N/A'
             }
-        
-        # ========== FETCH EARNINGS CALENDAR DATA ==========
-        try:
-            earnings_calendar = self.ticker.calendar
-            if earnings_calendar is not None and not earnings_calendar.empty:
-                # Extract earnings estimates if available
-                if 'Earnings Date' in earnings_calendar.columns:
-                    analyst_data['next_earnings_date'] = str(earnings_calendar['Earnings Date'].iloc[0]) if len(earnings_calendar) > 0 else None
-                if 'Earnings Average' in earnings_calendar.columns:
-                    analyst_data['earnings_estimate'] = earnings_calendar['Earnings Average'].iloc[0] if len(earnings_calendar) > 0 else None
-                if 'Earnings Low' in earnings_calendar.columns:
-                    analyst_data['earnings_low'] = earnings_calendar['Earnings Low'].iloc[0] if len(earnings_calendar) > 0 else None
-                if 'Earnings High' in earnings_calendar.columns:
-                    analyst_data['earnings_high'] = earnings_calendar['Earnings High'].iloc[0] if len(earnings_calendar) > 0 else None
-        except:
-            pass
-        
-        # ========== FETCH ANALYST RECOMMENDATIONS TREND ==========
-        try:
-            recommendations = self.ticker.recommendations
-            if recommendations is not None and not recommendations.empty:
-                # Get most recent recommendations (last 3 months)
-                recent = recommendations.tail(10)
-                analyst_data['recent_recommendations'] = recent.to_dict('records')
-                
-                # Calculate recommendation distribution
-                if 'To Grade' in recent.columns:
-                    rec_counts = recent['To Grade'].value_counts().to_dict()
-                    analyst_data['recommendation_trend'] = rec_counts
-                    
-                    # Calculate consensus score (weighted average)
-                    grade_weights = {
-                        'Strong Buy': 5, 'Buy': 4, 'Outperform': 4,
-                        'Hold': 3, 'Neutral': 3,
-                        'Underperform': 2, 'Sell': 1, 'Strong Sell': 0
-                    }
-                    total_score = sum(grade_weights.get(grade, 3) * count for grade, count in rec_counts.items())
-                    total_recs = sum(rec_counts.values())
-                    if total_recs > 0:
-                        consensus_score = total_score / total_recs
-                        analyst_data['consensus_score'] = round(consensus_score, 2)
-        except:
-            pass
-        
-        # ========== FETCH EARNINGS ESTIMATES ==========
-        try:
-            earnings = self.ticker.earnings_dates
-            if earnings is not None and not earnings.empty:
-                # Get future earnings estimates
-                future_earnings = earnings[earnings.index > pd.Timestamp.now()]
-                if not future_earnings.empty:
-                    # Get next quarter estimate
-                    next_quarter = future_earnings.iloc[0]
-                    if 'Estimate EPS' in next_quarter.index:
-                        analyst_data['next_quarter_eps'] = next_quarter['Estimate EPS']
-        except:
-            pass
-        
-        # ========== ENHANCED INFO EXTRACTION ==========
-        # Extract additional estimates from info
-        analyst_data['current_year_eps'] = info.get('epsCurrentYear')
-        analyst_data['next_year_eps'] = info.get('epsForward')
-        analyst_data['current_quarter_eps'] = info.get('epsTrailingTwelveMonths')
-        
-        # Revenue estimates
-        analyst_data['current_year_revenue'] = info.get('revenueEstimate')
-        analyst_data['revenue_per_share'] = info.get('revenuePerShare')
-        
-        # Growth rates
-        analyst_data['earnings_growth'] = info.get('earningsGrowth')
-        analyst_data['revenue_growth'] = info.get('revenueGrowth')
-        analyst_data['earnings_quarterly_growth'] = info.get('earningsQuarterlyGrowth')
-        
-        # ========== CALCULATE UPSIDE POTENTIAL ==========
-        if analyst_data['target_mean'] and current_price > 0:
-            upside = ((analyst_data['target_mean'] - current_price) / current_price) * 100
-            analyst_data['upside_percent'] = round(upside, 2)
-            
-            # Calculate risk rating based on upside and volatility
-            if upside > 20:
-                analyst_data['risk_rating'] = 'High Reward'
-            elif upside > 10:
-                analyst_data['risk_rating'] = 'Moderate Reward'
-            elif upside > 0:
-                analyst_data['risk_rating'] = 'Low Reward'
-            else:
-                analyst_data['risk_rating'] = 'Overvalued'
-        
-        # ========== FORMAT RECOMMENDATION TEXT ==========
-        rec_key = analyst_data['recommendation']
-        rec_map = {
-            'strong_buy': 'Strong Buy',
-            'buy': 'Buy',
-            'outperform': 'Outperform',
-            'hold': 'Hold',
-            'underperform': 'Underperform',
-            'sell': 'Sell',
-            'strong_sell': 'Strong Sell'
-        }
-        
-        if rec_key:
-            analyst_data['recommendation_text'] = rec_map.get(rec_key.lower(), rec_key.title())
-        else:
-            analyst_data['recommendation_text'] = 'N/A'
-        
-        # ========== CALCULATE TARGET RANGE ==========
-        if analyst_data['target_high'] and analyst_data['target_low']:
-            target_range = analyst_data['target_high'] - analyst_data['target_low']
-            analyst_data['target_range'] = target_range
-            analyst_data['target_range_percent'] = (target_range / analyst_data['target_mean'] * 100) if analyst_data['target_mean'] else None
-        
-        return analyst_data
-        
-    except Exception as e:
+
         # Fallback to basic data
         try:
             info = self.ticker.info
