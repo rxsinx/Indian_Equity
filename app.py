@@ -1499,53 +1499,53 @@ class IndianEquityAnalyzer:
         return info
 
     def get_analyst_forecasts(self):
-    """
-    Get comprehensive analyst recommendations, price targets, and estimates
-    Enhanced version with earnings forecasts, revenue estimates, and recommendations trend
-    """
-    try:
-        info = self.ticker.info
-        current_price = self.data['Close'].iloc[-1] if self.data is not None and not self.data.empty else 0
-        
-        # Initialize comprehensive analyst data structure
-        analyst_data = {
-            # Price Targets
-            'current_price': current_price,
-            'target_mean': info.get('targetMeanPrice'),
-            'target_high': info.get('targetHighPrice'),
-            'target_low': info.get('targetLowPrice'),
-            'target_median': info.get('targetMedianPrice'),
+        """
+        Get comprehensive analyst recommendations, price targets, and estimates
+        Enhanced version with earnings forecasts, revenue estimates, and recommendations trend
+        """
+        try:
+            info = self.ticker.info
+            current_price = self.data['Close'].iloc[-1] if self.data is not None and not self.data.empty else 0
             
-            # Recommendations
-            'recommendation': info.get('recommendationKey', 'hold'),
-            'num_analysts': info.get('numberOfAnalystOpinions', 0),
-            
-            # Earnings Estimates (from info)
-            'current_year_eps': None,
-            'next_year_eps': None,
-            'current_quarter_eps': None,
-            'next_quarter_eps': None,
-            'eps_growth_current': None,
-            'eps_growth_next': None,
-            
-            # Revenue Estimates
-            'current_year_revenue': None,
-            'next_year_revenue': None,
-            'revenue_growth_current': None,
-            'revenue_growth_next': None,
-            
-            # Profitability Estimates
-            'forward_pe': info.get('forwardPE'),
-            'peg_ratio': info.get('pegRatio'),
-            
-            # Recent recommendations trend
-            'recent_recommendations': [],
-            'recommendation_trend': {},
-            
-            # Calculated metrics
-            'upside_percent': None,
-            'risk_rating': 'N/A'
-        }
+            # Initialize comprehensive analyst data structure
+            analyst_data = {
+                # Price Targets
+                'current_price': current_price,
+                'target_mean': info.get('targetMeanPrice'),
+                'target_high': info.get('targetHighPrice'),
+                'target_low': info.get('targetLowPrice'),
+                'target_median': info.get('targetMedianPrice'),
+                
+                # Recommendations
+                'recommendation': info.get('recommendationKey', 'hold'),
+                'num_analysts': info.get('numberOfAnalystOpinions', 0),
+                
+                # Earnings Estimates (from info)
+                'current_year_eps': None,
+                'next_year_eps': None,
+                'current_quarter_eps': None,
+                'next_quarter_eps': None,
+                'eps_growth_current': None,
+                'eps_growth_next': None,
+                
+                # Revenue Estimates
+                'current_year_revenue': None,
+                'next_year_revenue': None,
+                'revenue_growth_current': None,
+                'revenue_growth_next': None,
+                
+                # Profitability Estimates
+                'forward_pe': info.get('forwardPE'),
+                'peg_ratio': info.get('pegRatio'),
+                
+                # Recent recommendations trend
+                'recent_recommendations': [],
+                'recommendation_trend': {},
+                
+                # Calculated metrics
+                'upside_percent': None,
+                'risk_rating': 'N/A'
+            }
         
         # ========== FETCH EARNINGS CALENDAR DATA ==========
         try:
