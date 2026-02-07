@@ -2329,16 +2329,16 @@ except Exception as e:
 # Trading Signal
 st.markdown('<div class="sub-header">🎯 Trading Signal & Analysis</div>', unsafe_allow_html=True)
                 
-                overall, signals, score, color = analyzer.get_trading_signal()
+overall, signals, score, color = analyzer.get_trading_signal()
                 
-                signal_cols = st.columns([1, 2])
-                with signal_cols[0]:
-                    st.markdown(f"""
-                    <div style="background-color: {color}; padding: 20px; border-radius: 10px; text-align: center;">
-                        <h2 style="margin: 0; color: white;">{overall}</h2>
-                        <p style="margin: 5px 0; font-size: 18px; color: white;">Score: {score:.1f}/100</p>
-                    </div>
-                    """, unsafe_allow_html=True)
+signal_cols = st.columns([1, 2])
+with signal_cols[0]:
+    st.markdown(f"""
+    <div style="background-color: {color}; padding: 20px; border-radius: 10px; text-align: center;">
+        <h2 style="margin: 0; color: white;">{overall}</h2>
+        <p style="margin: 5px 0; font-size: 18px; color: white;">Score: {score:.1f}/100</p>
+    </div>
+    """, unsafe_allow_html=True)
                     
                     # Gauge chart for signal strength
                     fig_gauge = go.Figure(go.Indicator(
