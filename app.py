@@ -1498,78 +1498,192 @@ class IndianEquityAnalyzer:
         
         return info
 
-    #Fetch analyst estimates and forecast data from yfinance
     def get_analyst_forecasts(self):
-        """Get analyst recommendations and price targets"""
+    """
+    Get comprehensive analyst recommendations, price targets, and estimates
+    Enhanced version with earnings forecasts, revenue estimates, and recommendations trend
+    """
+    try:
+        info = self.ticker.info
+        current_price = self.data['Close'].iloc[-1] if self.data is not None and not self.data.empty else 0
+        
+        # Initialize comprehensive analyst data structure
+        analyst_data = {
+            # Price Targets
+            'current_price': current_price,
+            'target_mean': info.get('targetMeanPrice'),
+            'target_high': info.get('targetHighPrice'),
+            'target_low': info.get('targetLowPrice'),
+            'target_median': info.get('targetMedianPrice'),
             
+            # Recommendations
+            'recommendation': info.get('recommendationKey', 'hold'),
+            'num_analysts': info.get('numberOfAnalystOpinions', 0),
+            
+            # Earnings Estimates (from info)
+            'current_year_eps': None,
+            'next_year_eps': None,
+            'current_quarter_eps': None,
+            'next_quarter_eps': None,
+            'eps_growth_current': None,
+            'eps_growth_next': None,
+            
+            # Revenue Estimates
+            'current_year_revenue': None,
+            'next_year_revenue': None,
+            'revenue_growth_current': None,
+            'revenue_growth_next': None,
+            
+            # Profitability Estimates
+            'forward_pe': info.get('forwardPE'),
+            'peg_ratio': info.get('pegRatio'),
+            
+            # Recent recommendations trend
+            'recent_recommendations': [],
+            'recommendation_trend': {},
+            
+            # Calculated metrics
+            'upside_percent': None,
+            'risk_rating': 'N/A'
+        }
+        
+        # ========== FETCH EARNINGS CALENDAR DATA ==========
         try:
-            info = self.ticker.analysis
+            earnings_calendar = self.ticker.calendar
+            if earnings_calendar is not None and not earnings_calendar.empty:
+                # Extract earnings estimates if available
+                if 'Earnings Date' in earnings_calendar.columns:
+                    analyst_data['next_earnings_date'] = str(earnings_calendar['Earnings Date'].iloc[0]) if len(earnings_calendar) > 0 else None
+                if 'Earnings Average' in earnings_calendar.columns:
+                    analyst_data['earnings_estimate'] = earnings_calendar['Earnings Average'].iloc[0] if len(earnings_calendar) > 0 else None
+                if 'Earnings Low' in earnings_calendar.columns:
+                    analyst_data['earnings_low'] = earnings_calendar['Earnings Low'].iloc[0] if len(earnings_calendar) > 0 else None
+                if 'Earnings High' in earnings_calendar.columns:
+                    analyst_data['earnings_high'] = earnings_calendar['Earnings High'].iloc[0] if len(earnings_calendar) > 0 else None
+        except:
+            pass
+        
+        # ========== FETCH ANALYST RECOMMENDATIONS TREND ==========
+        try:
             recommendations = self.ticker.recommendations
-            current_price = self.data['Close'].iloc[-1] if self.data is not None else 0
-        
-            # Get earnings estimates from the analysis dataframe if available
-            eps_current_year = None
-            eps_next_year = None
-            if analysis is not None and not analysis.empty:
-                # These are typical column names in the analysis dataframe
-                if 'EpsEstimateCurrentYear' in analysis.columns:
-                    eps_current_year = analysis['EpsEstimateCurrentYear'].iloc[-1] if not analysis['EpsEstimateCurrentYear'].empty else None
-            if 'EpsEstimateNextYear' in analysis.columns:
-                    eps_next_year = analysis['EpsEstimateNextYear'].iloc[-1] if not analysis['EpsEstimateNextYear'].empty else None
-        
-            analyst_data = {
-                'current_price': current_price,
-                'target_mean': info.get('targetMeanPrice', None),
-                'target_high': info.get('targetHighPrice', None),
-                'target_low': info.get('targetLowPrice', None),
-                'recommendation': info.get('recommendationKey', 'N/A'),
-                'num_analysts': info.get('numberOfAnalystOpinions', 0),
-                'current_year_eps': eps_current_year,
-                'next_year_eps': eps_next_year
-            }
-        
-            # Calculate upside
-            if analyst_data['target_mean'] and current_price > 0:
-                upside = ((analyst_data['target_mean'] - current_price) / current_price) * 100
-                analyst_data['upside_percent'] = round(upside, 2)
-            else:
-                analyst_data['upside_percent'] = None
-            
-            # Get recent recommendations trend
             if recommendations is not None and not recommendations.empty:
-                recent_rec = recommendations.tail(5)
-                analyst_data['recent_recommendations'] = recent_rec.to_dict('records')
-            else:
-                analyst_data['recent_recommendations'] = []
-            
-            return analyst_data
+                # Get most recent recommendations (last 3 months)
+                recent = recommendations.tail(10)
+                analyst_data['recent_recommendations'] = recent.to_dict('records')
+                
+                # Calculate recommendation distribution
+                if 'To Grade' in recent.columns:
+                    rec_counts = recent['To Grade'].value_counts().to_dict()
+                    analyst_data['recommendation_trend'] = rec_counts
+                    
+                    # Calculate consensus score (weighted average)
+                    grade_weights = {
+                        'Strong Buy': 5, 'Buy': 4, 'Outperform': 4,
+                        'Hold': 3, 'Neutral': 3,
+                        'Underperform': 2, 'Sell': 1, 'Strong Sell': 0
+                    }
+                    total_score = sum(grade_weights.get(grade, 3) * count for grade, count in rec_counts.items())
+                    total_recs = sum(rec_counts.values())
+                    if total_recs > 0:
+                        consensus_score = total_score / total_recs
+                        analyst_data['consensus_score'] = round(consensus_score, 2)
+        except:
+            pass
         
-        except Exception as e:
-    
-            # Fallback to basic info if detailed analysis fails
-            try:
-                info = self.ticker.info
-                current_price = self.data['Close'].iloc[-1] if self.data is not None else 0
+        # ========== FETCH EARNINGS ESTIMATES ==========
+        try:
+            earnings = self.ticker.earnings_dates
+            if earnings is not None and not earnings.empty:
+                # Get future earnings estimates
+                future_earnings = earnings[earnings.index > pd.Timestamp.now()]
+                if not future_earnings.empty:
+                    # Get next quarter estimate
+                    next_quarter = future_earnings.iloc[0]
+                    if 'Estimate EPS' in next_quarter.index:
+                        analyst_data['next_quarter_eps'] = next_quarter['Estimate EPS']
+        except:
+            pass
+        
+        # ========== ENHANCED INFO EXTRACTION ==========
+        # Extract additional estimates from info
+        analyst_data['current_year_eps'] = info.get('epsCurrentYear')
+        analyst_data['next_year_eps'] = info.get('epsForward')
+        analyst_data['current_quarter_eps'] = info.get('epsTrailingTwelveMonths')
+        
+        # Revenue estimates
+        analyst_data['current_year_revenue'] = info.get('revenueEstimate')
+        analyst_data['revenue_per_share'] = info.get('revenuePerShare')
+        
+        # Growth rates
+        analyst_data['earnings_growth'] = info.get('earningsGrowth')
+        analyst_data['revenue_growth'] = info.get('revenueGrowth')
+        analyst_data['earnings_quarterly_growth'] = info.get('earningsQuarterlyGrowth')
+        
+        # ========== CALCULATE UPSIDE POTENTIAL ==========
+        if analyst_data['target_mean'] and current_price > 0:
+            upside = ((analyst_data['target_mean'] - current_price) / current_price) * 100
+            analyst_data['upside_percent'] = round(upside, 2)
             
-                return {
-                    'current_price': current_price,
-                    'target_mean': info.get('targetMeanPrice', None),
-                    'target_high': info.get('targetHighPrice', None),
-                    'target_low': info.get('targetLowPrice', None),
-                    'recommendation': info.get('recommendationKey', 'N/A'),
-                    'num_analysts': info.get('numberOfAnalystOpinions', 0),
-                    'upside_percent': None
-                }
-            except:
-                return {
-                    'current_price': self.data['Close'].iloc[-1] if self.data is not None else 0,
-                    'target_mean': None,
-                    'target_high': None,
-                    'target_low': None,
-                    'recommendation': 'N/A',
-                    'num_analysts': 0,
-                    'upside_percent': None
-                }
+            # Calculate risk rating based on upside and volatility
+            if upside > 20:
+                analyst_data['risk_rating'] = 'High Reward'
+            elif upside > 10:
+                analyst_data['risk_rating'] = 'Moderate Reward'
+            elif upside > 0:
+                analyst_data['risk_rating'] = 'Low Reward'
+            else:
+                analyst_data['risk_rating'] = 'Overvalued'
+        
+        # ========== FORMAT RECOMMENDATION TEXT ==========
+        rec_key = analyst_data['recommendation']
+        rec_map = {
+            'strong_buy': 'Strong Buy',
+            'buy': 'Buy',
+            'outperform': 'Outperform',
+            'hold': 'Hold',
+            'underperform': 'Underperform',
+            'sell': 'Sell',
+            'strong_sell': 'Strong Sell'
+        }
+        
+        if rec_key:
+            analyst_data['recommendation_text'] = rec_map.get(rec_key.lower(), rec_key.title())
+        else:
+            analyst_data['recommendation_text'] = 'N/A'
+        
+        # ========== CALCULATE TARGET RANGE ==========
+        if analyst_data['target_high'] and analyst_data['target_low']:
+            target_range = analyst_data['target_high'] - analyst_data['target_low']
+            analyst_data['target_range'] = target_range
+            analyst_data['target_range_percent'] = (target_range / analyst_data['target_mean'] * 100) if analyst_data['target_mean'] else None
+        
+        return analyst_data
+        
+    except Exception as e:
+        # Fallback to basic data
+        try:
+            info = self.ticker.info
+            current_price = self.data['Close'].iloc[-1] if self.data is not None and not self.data.empty else 0
+            
+            return {
+                'current_price': current_price,
+                'target_mean': info.get('targetMeanPrice'),
+                'target_high': info.get('targetHighPrice'),
+                'target_low': info.get('targetLowPrice'),
+                'recommendation': info.get('recommendationKey', 'N/A'),
+                'recommendation_text': info.get('recommendationKey', 'N/A').title() if info.get('recommendationKey') else 'N/A',
+                'num_analysts': info.get('numberOfAnalystOpinions', 0),
+                'upside_percent': None,
+                'error': str(e)
+            }
+        except:
+            return {
+                'current_price': self.data['Close'].iloc[-1] if self.data is not None and not self.data.empty else 0,
+                'target_mean': None,
+                'recommendation_text': 'Not Available',
+                'num_analysts': 0,
+                'upside_percent': None
+            }
     
     def format_market_cap(self, market_cap):
         """Format market cap to readable string"""
@@ -1989,71 +2103,277 @@ def main():
                 with price_cols[4]:
                     st.metric("52W Low", f"₹{info.get('52w_low', 0):.2f}")
 
-                # ==================== ANALYST FORECASTS SECTION ====================
-              
-                st.markdown('<div class="sub-header">📰 Analyst Forecasts & Estimates</div>', unsafe_allow_html=True)
+                # ==================== ADVANCED ANALYST FORECASTS SECTION ====================
+
+st.markdown('<div class="sub-header">📊 Analyst Forecasts & Estimates</div>', unsafe_allow_html=True)
+
+try:
+    forecasts = analyzer.get_analyst_forecasts()
+    
+    # Check if we have meaningful data
+    if forecasts.get('num_analysts', 0) > 0 or forecasts.get('target_mean'):
+        
+        # ========== ROW 1: Price Targets & Recommendations ==========
+        st.markdown("#### 🎯 Price Targets & Analyst Consensus")
+        col1, col2, col3, col4, col5 = st.columns(5)
+        
+        with col1:
+            rec_text = forecasts.get('recommendation_text', 'N/A')
+            # Color code the recommendation
+            if rec_text in ['Strong Buy', 'Buy', 'Outperform']:
+                rec_color = '🟢'
+            elif rec_text in ['Hold', 'Neutral']:
+                rec_color = '🟡'
+            else:
+                rec_color = '🔴'
+            st.metric("Consensus", f"{rec_color} {rec_text}")
+        
+        with col2:
+            num_analysts = forecasts.get('num_analysts', 0)
+            st.metric("Analysts Covering", f"{num_analysts}")
+        
+        with col3:
+            target_mean = forecasts.get('target_mean')
+            if target_mean:
+                st.metric("Avg Target", f"₹{target_mean:,.2f}")
+            else:
+                st.metric("Avg Target", "N/A")
+        
+        with col4:
+            upside = forecasts.get('upside_percent')
+            if upside is not None:
+                delta_color = "normal" if upside >= 0 else "inverse"
+                st.metric("Upside/Downside", f"{upside:+.1f}%", delta_color=delta_color)
+            else:
+                st.metric("Upside/Downside", "N/A")
+        
+        with col5:
+            risk_rating = forecasts.get('risk_rating', 'N/A')
+            st.metric("Risk/Reward", risk_rating)
+        
+        # ========== ROW 2: Target Range ==========
+        if forecasts.get('target_high') and forecasts.get('target_low'):
+            st.markdown("#### 📈 Price Target Range")
+            col1, col2, col3, col4 = st.columns(4)
+            
+            with col1:
+                st.metric("Target High", f"₹{forecasts['target_high']:,.2f}")
+            with col2:
+                st.metric("Target Mean", f"₹{forecasts['target_mean']:,.2f}")
+            with col3:
+                st.metric("Target Low", f"₹{forecasts['target_low']:,.2f}")
+            with col4:
+                target_range_pct = forecasts.get('target_range_percent')
+                if target_range_pct:
+                    st.metric("Analyst Spread", f"{target_range_pct:.1f}%")
+                else:
+                    st.metric("Analyst Spread", "N/A")
+        
+        # ========== ROW 3: Earnings Estimates ==========
+        st.markdown("#### 💰 Earnings & Revenue Estimates")
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            eps_current = forecasts.get('current_year_eps')
+            if eps_current:
+                st.metric("Current Year EPS", f"₹{eps_current:.2f}")
+            else:
+                st.metric("Current Year EPS", "N/A")
+        
+        with col2:
+            eps_next = forecasts.get('next_year_eps')
+            if eps_next:
+                growth_rate = None
+                if eps_current and eps_current > 0:
+                    growth_rate = ((eps_next - eps_current) / eps_current) * 100
+                st.metric("Next Year EPS", f"₹{eps_next:.2f}", 
+                         f"{growth_rate:+.1f}%" if growth_rate else None)
+            else:
+                st.metric("Next Year EPS", "N/A")
+        
+        with col3:
+            eps_growth = forecasts.get('earnings_growth')
+            if eps_growth:
+                st.metric("EPS Growth Rate", f"{eps_growth*100:.1f}%")
+            else:
+                st.metric("EPS Growth Rate", "N/A")
+        
+        with col4:
+            revenue_growth = forecasts.get('revenue_growth')
+            if revenue_growth:
+                st.metric("Revenue Growth", f"{revenue_growth*100:.1f}%")
+            else:
+                st.metric("Revenue Growth", "N/A")
+        
+        # ========== ROW 4: Valuation Metrics ==========
+        st.markdown("#### 📊 Forward Valuation Metrics")
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            forward_pe = forecasts.get('forward_pe')
+            if forward_pe:
+                st.metric("Forward P/E", f"{forward_pe:.2f}")
+            else:
+                st.metric("Forward P/E", "N/A")
+        
+        with col2:
+            peg = forecasts.get('peg_ratio')
+            if peg:
+                peg_signal = "Undervalued" if peg < 1 else "Fairly Valued" if peg < 2 else "Overvalued"
+                st.metric("PEG Ratio", f"{peg:.2f}", peg_signal)
+            else:
+                st.metric("PEG Ratio", "N/A")
+        
+        with col3:
+            next_earnings = forecasts.get('next_earnings_date')
+            if next_earnings:
+                st.metric("Next Earnings", str(next_earnings)[:10])
+            else:
+                st.metric("Next Earnings", "N/A")
+        
+        with col4:
+            earnings_est = forecasts.get('earnings_estimate')
+            if earnings_est:
+                st.metric("Est. EPS (Next Qtr)", f"₹{earnings_est:.2f}")
+            else:
+                st.metric("Est. EPS (Next Qtr)", "N/A")
+        
+        # ========== RECOMMENDATION TREND CHART ==========
+        if forecasts.get('recommendation_trend'):
+            st.markdown("#### 📉 Recent Analyst Recommendation Trend")
+            
+            trend_data = forecasts['recommendation_trend']
+            
+            # Create bar chart
+            fig_trend = go.Figure(data=[
+                go.Bar(
+                    x=list(trend_data.keys()),
+                    y=list(trend_data.values()),
+                    marker=dict(
+                        color=['#00cc00' if 'Buy' in k or 'Outperform' in k 
+                               else '#ff9900' if 'Hold' in k or 'Neutral' in k 
+                               else '#ff0000' 
+                               for k in trend_data.keys()]
+                    ),
+                    text=list(trend_data.values()),
+                    textposition='auto'
+                )
+            ])
+            
+            fig_trend.update_layout(
+                title="Distribution of Recent Analyst Recommendations",
+                xaxis_title="Recommendation",
+                yaxis_title="Number of Analysts",
+                height=300,
+                template='plotly_white'
+            )
+            
+            st.plotly_chart(fig_trend, use_container_width=True)
+            
+            # Consensus score
+            consensus_score = forecasts.get('consensus_score')
+            if consensus_score:
+                st.markdown(f"""
+                **Consensus Score:** {consensus_score:.2f}/5.0  
+                *(5=Strong Buy, 4=Buy, 3=Hold, 2=Underperform, 1=Sell)*
+                """)
+        
+        # ========== RECENT ANALYST ACTIONS ==========
+        if forecasts.get('recent_recommendations'):
+            with st.expander("📋 Recent Analyst Actions (Last 10)"):
+                recent_recs = forecasts['recent_recommendations']
                 
-                # Fetch the forecast data
-                try:
-                    forecasts = analyzer.get_analyst_forecasts()
+                # Create DataFrame
+                rec_df = pd.DataFrame(recent_recs)
                 
-                    # Check if we have meaningful data to display (more than just 'N/A')
-                    if forecasts.get('num_analysts', 0) > 0:
+                # Format and display
+                if not rec_df.empty:
+                    # Select relevant columns
+                    display_cols = []
+                    if 'Date' in rec_df.columns or rec_df.index.name:
+                        rec_df['Date'] = rec_df.index if 'Date' not in rec_df.columns else rec_df['Date']
+                        rec_df['Date'] = pd.to_datetime(rec_df['Date']).dt.strftime('%Y-%m-%d')
+                        display_cols.append('Date')
                     
-                        # First row: Recommendations and Price Targets
-                        col1, col2, col3, col4 = st.columns(4)
-                        with col1:
-                            st.metric("Analyst Consensus", forecasts.get('recommendation', 'N/A'))
-                        with col2:
-                            st.metric("No. of Analysts", forecasts.get('num_analysts', 'N/A'))
-                        with col3:
-                            target = forecasts.get('target_mean')
-                            display_target = f"₹{target:,.0f}" if isinstance(target, (int, float)) else 'N/A'
-                            st.metric("Avg. Price Target", display_target)
-                        with col4:
-                            current_price = analyzer.data['Close'].iloc[-1] if analyzer.data is not None else 0
-                            if isinstance(target, (int, float)) and current_price > 0:
-                                upside = ((target - current_price) / current_price) * 100
-                                st.metric("Upside Potential", f"{upside:+.1f}%")
-                            else:
-                                st.metric("Upside Potential", "N/A")
-                        
-                        # Second row: Earnings and Growth Estimates
-                        st.markdown("**Earnings & Growth Estimates**")
-                        col5, col6, col7, col8 = st.columns(4)
-                        with col5:
-                            eps = forecasts.get('current_year_eps')
-                            display_eps = f"₹{eps:.1f}" if isinstance(eps, (int, float)) else 'N/A'
-                            st.metric("Current Year EPS Est.", display_eps)
-                        with col6:
-                            eps_next = forecasts.get('next_year_eps')
-                            display_eps_next = f"₹{eps_next:.1f}" if isinstance(eps_next, (int, float)) else 'N/A'
-                            st.metric("Next Year EPS Est.", display_eps_next)
-                        with col7:
-                            growth = forecasts.get('eps_growth')
-                            display_growth = f"{growth*100:.1f}%" if isinstance(growth, (int, float)) else 'N/A'
-                            st.metric("EPS Growth (Est.)", display_growth)
-                        with col8:
-                            rev = forecasts.get('current_year_rev')
-                            # Format large revenue numbers in Cr or Lakh Cr
-                            if isinstance(rev, (int, float)):
-                                if rev >= 1e10:
-                                    display_rev = f"₹{rev/1e10:.1f} Cr"
-                                elif rev >= 1e7:
-                                    display_rev = f"₹{rev/1e7:.0f} Lakh"
-                                else:
-                                    display_rev = f"₹{rev:,.0f}"
-                            else:
-                                display_rev = 'N/A'
-                            st.metric("Current Year Rev. Est.", display_rev)
-                
-                    else:
-                        st.info("""
-                    **Note:** Detailed analyst forecast data is not widely published for this stock.
-                    This is common for smaller market cap companies. Fundamental data like P/E ratio and sector information is still available above.
-                    """)
-                except Exception as e:
-                    st.warning(f"Could not fetch analyst forecasts: {str(e)}")
+                    for col in ['Firm', 'To Grade', 'From Grade', 'Action']:
+                        if col in rec_df.columns:
+                            display_cols.append(col)
+                    
+                    if display_cols:
+                        st.dataframe(
+                            rec_df[display_cols].head(10),
+                            use_container_width=True,
+                            hide_index=True
+                        )
+                else:
+                    st.info("No recent analyst actions available.")
+        
+        # ========== INTERPRETATION & INSIGHTS ==========
+        st.markdown("#### 💡 Analyst Insights")
+        
+        insights = []
+        
+        # Upside insight
+        if upside:
+            if upside > 20:
+                insights.append(f"✅ **Strong Upside**: Analysts see {upside:.1f}% upside potential - significant room for growth")
+            elif upside > 10:
+                insights.append(f"✅ **Moderate Upside**: {upside:.1f}% upside indicates positive outlook")
+            elif upside > 0:
+                insights.append(f"⚠️ **Limited Upside**: Only {upside:.1f}% upside - stock fairly valued")
+            else:
+                insights.append(f"🔴 **Overvalued**: {upside:.1f}% indicates stock may be overpriced")
+        
+        # Consensus insight
+        if rec_text:
+            if rec_text in ['Strong Buy', 'Buy']:
+                insights.append("✅ **Bullish Consensus**: Analysts recommend buying")
+            elif rec_text in ['Hold', 'Neutral']:
+                insights.append("⚠️ **Neutral Stance**: Analysts suggest holding current positions")
+            else:
+                insights.append("🔴 **Bearish Consensus**: Analysts recommend caution or selling")
+        
+        # Growth insight
+        if eps_growth and eps_growth > 0:
+            insights.append(f"📈 **Positive Growth**: {eps_growth*100:.1f}% earnings growth expected")
+        elif eps_growth and eps_growth < 0:
+            insights.append(f"📉 **Negative Growth**: {eps_growth*100:.1f}% earnings decline expected")
+        
+        # PEG insight
+        if peg:
+            if peg < 1:
+                insights.append(f"💰 **Undervalued**: PEG ratio of {peg:.2f} suggests stock is undervalued relative to growth")
+            elif peg > 2:
+                insights.append(f"⚠️ **Expensive**: PEG ratio of {peg:.2f} suggests stock may be overvalued")
+        
+        # Analyst coverage insight
+        if num_analysts:
+            if num_analysts > 15:
+                insights.append(f"👥 **High Coverage**: {num_analysts} analysts covering - well-researched stock")
+            elif num_analysts < 5:
+                insights.append(f"⚠️ **Low Coverage**: Only {num_analysts} analysts - less market consensus")
+        
+        # Display insights
+        if insights:
+            for insight in insights:
+                st.markdown(f"• {insight}")
+        else:
+            st.info("Limited analyst data available for detailed insights.")
+    
+    else:
+        st.info("""
+        **Limited Analyst Coverage**  
+        This stock has limited analyst coverage. This is common for:
+        - Smaller market cap companies
+        - Recently listed stocks
+        - Less liquid securities
+        
+        **Alternative Analysis**: Use technical indicators and fundamental metrics shown above.
+        """)
+
+except Exception as e:
+    st.error(f"Could not fetch analyst forecasts: {str(e)}")
+    st.info("Try analyzing a large-cap stock like RELIANCE, TCS, or HDFCBANK for comprehensive analyst data.")
                 
                 # Trading Signal
                 st.markdown('<div class="sub-header">🎯 Trading Signal & Analysis</div>', unsafe_allow_html=True)
