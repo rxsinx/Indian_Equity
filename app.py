@@ -131,16 +131,6 @@ st.markdown("""
         border-radius: 10px;
         text-align: center;
     }
-    
-    .support-line {
-        border-left: 3px solid #00aa00;
-        padding-left: 10px;
-    }
-    
-    .resistance-line {
-        border-left: 3px solid #ff4444;
-        padding-left: 10px;
-    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -158,9 +148,11 @@ class IndianEquityAnalyzer:
         """Validate and format stock symbol"""
         valid_formats = ['.NS', '.BO']
         
+        # Check if symbol has valid suffix
         if any(symbol.upper().endswith(suffix) for suffix in valid_formats):
             return symbol.upper()
         
+        # Common Indian stocks for validation
         common_indian_stocks = [
             'RELIANCE', 'TCS', 'HDFCBANK', 'INFY', 'HINDUNILVR',
             'ICICIBANK', 'ITC', 'SBIN', 'BHARTIARTL', 'KOTAKBANK',
@@ -169,10 +161,11 @@ class IndianEquityAnalyzer:
             'ONGC', 'NTPC', 'POWERGRID', 'M&M', 'TATASTEEL'
         ]
         
+        # Add .NS suffix for common Indian stocks
         if symbol.upper() in common_indian_stocks:
             return f"{symbol.upper()}.NS"
         
-        return f"{symbol.upper()}.NS"
+        return f"{symbol.upper()}.NS"  # Default to NSE
     
     @st.cache_data(ttl=3600, show_spinner="Fetching market data...")
     def fetch_data(_self, symbol, period):
@@ -188,6 +181,7 @@ class IndianEquityAnalyzer:
             self.data = self.ticker.history(period=self.period)
             
             if self.data.empty:
+                # Try alternative suffix
                 if self.symbol.endswith('.NS'):
                     alt_symbol = self.symbol.replace('.NS', '.BO')
                 else:
@@ -222,18 +216,18 @@ class IndianEquityAnalyzer:
         df['EMA_55'] = ta.trend.ema_indicator(df['Close'], window=55)
         df['EMA_70'] = ta.trend.ema_indicator(df['Close'], window=70)
         
-        # MACD
+        # MACD with multiple configurations
         macd_fast = ta.trend.MACD(df['Close'], window_fast=12, window_slow=26, window_sign=9)
         df['MACD'] = macd_fast.macd()
         df['MACD_Signal'] = macd_fast.macd_signal()
         df['MACD_Hist'] = macd_fast.macd_diff()
         
-        # RSI
+        # RSI with multiple periods
         df['RSI_14'] = ta.momentum.rsi(df['Close'], window=14)
         df['RSI_7'] = ta.momentum.rsi(df['Close'], window=7)
         df['RSI_21'] = ta.momentum.rsi(df['Close'], window=21)
         
-        # Bollinger Bands
+        # Bollinger Bands with multiple deviations
         bb_20_2 = ta.volatility.BollingerBands(df['Close'], window=20, window_dev=2)
         df['BB_Upper'] = bb_20_2.bollinger_hband()
         df['BB_Middle'] = bb_20_2.bollinger_mavg()
@@ -257,11 +251,11 @@ class IndianEquityAnalyzer:
         df['Volume_SMA_20'] = df['Volume'].rolling(window=20).mean()
         df['Volume_Ratio'] = df['Volume'] / df['Volume_SMA_20']
         
-        # VWAP
+        # VWAP (for intraday analysis)
         df['VWAP'] = (df['Volume'] * (df['High'] + df['Low'] + df['Close']) / 3).cumsum() / df['Volume'].cumsum()
         
         # Additional momentum indicators
-        df['ROC_10'] = df['Close'].pct_change(periods=10) * 100
+        df['ROC_10'] = df['Close'].pct_change(periods=10) * 100  # Rate of Change
         df['Williams_%R'] = ta.momentum.williams_r(df['High'], df['Low'], df['Close'], lbp=14)
         
         # Price channels
@@ -270,374 +264,6 @@ class IndianEquityAnalyzer:
         df['Donchian_Middle'] = (df['Donchian_High'] + df['Donchian_Low']) / 2
         
         self.data = df
-    
-    # ============================ SUPPORT & RESISTANCE DETECTION ============================
-    
-    def detect_support_resistance(self, lookback_period=100, threshold=0.02, min_touches=2):
-        """
-        Detect Support and Resistance levels using pivot points
-        
-        Parameters:
-        - lookback_period: Number of recent candles to analyze
-        - threshold: Price threshold for merging nearby levels (as percentage)
-        - min_touches: Minimum number of touches required for a valid level
-        
-        Returns:
-        - Dictionary with support and resistance levels
-        """
-        df = self.data.tail(lookback_period).copy()
-        if len(df) < 20:
-            return {'support': [], 'resistance': []}
-        
-        # Find local minima (support) and maxima (resistance)
-        support_levels = []
-        resistance_levels = []
-        
-        # Window for local extrema detection
-        window = 5
-        
-        for i in range(window, len(df) - window):
-            # Check for local minima (support)
-            if df['Low'].iloc[i] == df['Low'].iloc[i-window:i+window+1].min():
-                support_levels.append({
-                    'price': df['Low'].iloc[i],
-                    'date': df.index[i],
-                    'touches': 1,
-                    'strength': 1
-                })
-            
-            # Check for local maxima (resistance)
-            if df['High'].iloc[i] == df['High'].iloc[i-window:i+window+1].max():
-                resistance_levels.append({
-                    'price': df['High'].iloc[i],
-                    'date': df.index[i],
-                    'touches': 1,
-                    'strength': 1
-                })
-        
-        # Merge nearby levels
-        def merge_levels(levels, threshold_pct=threshold):
-            if not levels:
-                return []
-            
-            levels.sort(key=lambda x: x['price'])
-            merged = []
-            
-            for level in levels:
-                if not merged:
-                    merged.append(level.copy())
-                else:
-                    last_level = merged[-1]
-                    price_diff = abs(level['price'] - last_level['price']) / last_level['price']
-                    
-                    if price_diff <= threshold_pct:
-                        # Merge with existing level
-                        total_touches = last_level['touches'] + level['touches']
-                        last_level['price'] = (last_level['price'] * last_level['touches'] + 
-                                              level['price'] * level['touches']) / total_touches
-                        last_level['touches'] = total_touches
-                        last_level['strength'] = min(last_level['strength'] + 0.2, 3.0)
-                    else:
-                        merged.append(level.copy())
-            
-            return merged
-        
-        support_levels = merge_levels(support_levels)
-        resistance_levels = merge_levels(resistance_levels)
-        
-        # Count touches (how many times price tested the level)
-        def count_touches(levels, price_series, threshold_pct=0.01):
-            for level in levels:
-                touches = 0
-                for price in price_series:
-                    if abs(price - level['price']) / level['price'] <= threshold_pct:
-                        touches += 1
-                level['touches'] = touches
-                level['strength'] = min(touches * 0.5, 3.0)  # Strength based on touches
-            return [level for level in levels if level['touches'] >= min_touches]
-        
-        # Count touches for support (using lows)
-        low_prices = df['Low'].values
-        support_levels = count_touches(support_levels, low_prices)
-        
-        # Count touches for resistance (using highs)
-        high_prices = df['High'].values
-        resistance_levels = count_touches(resistance_levels, high_prices)
-        
-        # Sort by strength
-        support_levels.sort(key=lambda x: x['strength'], reverse=True)
-        resistance_levels.sort(key=lambda x: x['strength'], reverse=True)
-        
-        # Take top levels
-        max_levels = 5
-        support_levels = support_levels[:max_levels]
-        resistance_levels = resistance_levels[:max_levels]
-        
-        return {
-            'support': support_levels,
-            'resistance': resistance_levels,
-            'current_price': df['Close'].iloc[-1]
-        }
-    
-    def detect_trend_lines(self, lookback_period=100):
-        """
-        Detect ascending and descending trend lines
-        
-        Returns:
-        - Dictionary with trend line information
-        """
-        df = self.data.tail(lookback_period).copy()
-        if len(df) < 30:
-            return {'ascending': [], 'descending': []}
-        
-        # Find swing lows for ascending trend line
-        swing_lows = []
-        for i in range(2, len(df) - 2):
-            if (df['Low'].iloc[i] < df['Low'].iloc[i-1] and 
-                df['Low'].iloc[i] < df['Low'].iloc[i+1] and
-                df['Low'].iloc[i] < df['Low'].iloc[i-2] and 
-                df['Low'].iloc[i] < df['Low'].iloc[i+2]):
-                swing_lows.append({
-                    'date': df.index[i],
-                    'price': df['Low'].iloc[i]
-                })
-        
-        # Find swing highs for descending trend line
-        swing_highs = []
-        for i in range(2, len(df) - 2):
-            if (df['High'].iloc[i] > df['High'].iloc[i-1] and 
-                df['High'].iloc[i] > df['High'].iloc[i+1] and
-                df['High'].iloc[i] > df['High'].iloc[i-2] and 
-                df['High'].iloc[i] > df['High'].iloc[i+2]):
-                swing_highs.append({
-                    'date': df.index[i],
-                    'price': df['High'].iloc[i]
-                })
-        
-        # Detect ascending trend lines (connect at least 2 swing lows)
-        ascending_trends = []
-        if len(swing_lows) >= 2:
-            swing_lows.sort(key=lambda x: x['date'])
-            
-            for i in range(len(swing_lows) - 1):
-                for j in range(i + 1, len(swing_lows)):
-                    low1 = swing_lows[i]
-                    low2 = swing_lows[j]
-                    
-                    # Check if the line is ascending (later point is higher)
-                    if low2['price'] > low1['price']:
-                        # Calculate slope
-                        time_diff = (low2['date'] - low1['date']).days
-                        if time_diff > 0:
-                            price_diff = low2['price'] - low1['price']
-                            slope = price_diff / time_diff
-                            
-                            # Count how many other swing lows are near this line
-                            touches = 2  # Already have 2 points
-                            for low in swing_lows:
-                                if low['date'] not in [low1['date'], low2['date']]:
-                                    predicted_price = low1['price'] + slope * (low['date'] - low1['date']).days
-                                    if abs(low['price'] - predicted_price) / predicted_price < 0.02:
-                                        touches += 1
-                            
-                            if touches >= 2:
-                                ascending_trends.append({
-                                    'start_date': low1['date'],
-                                    'end_date': low2['date'],
-                                    'start_price': low1['price'],
-                                    'end_price': low2['price'],
-                                    'slope': slope,
-                                    'touches': touches,
-                                    'type': 'ascending'
-                                })
-        
-        # Detect descending trend lines (connect at least 2 swing highs)
-        descending_trends = []
-        if len(swing_highs) >= 2:
-            swing_highs.sort(key=lambda x: x['date'])
-            
-            for i in range(len(swing_highs) - 1):
-                for j in range(i + 1, len(swing_highs)):
-                    high1 = swing_highs[i]
-                    high2 = swing_highs[j]
-                    
-                    # Check if the line is descending (later point is lower)
-                    if high2['price'] < high1['price']:
-                        # Calculate slope
-                        time_diff = (high2['date'] - high1['date']).days
-                        if time_diff > 0:
-                            price_diff = high2['price'] - high1['price']
-                            slope = price_diff / time_diff
-                            
-                            # Count how many other swing highs are near this line
-                            touches = 2
-                            for high in swing_highs:
-                                if high['date'] not in [high1['date'], high2['date']]:
-                                    predicted_price = high1['price'] + slope * (high['date'] - high1['date']).days
-                                    if abs(high['price'] - predicted_price) / predicted_price < 0.02:
-                                        touches += 1
-                            
-                            if touches >= 2:
-                                descending_trends.append({
-                                    'start_date': high1['date'],
-                                    'end_date': high2['date'],
-                                    'start_price': high1['price'],
-                                    'end_price': high2['price'],
-                                    'slope': slope,
-                                    'touches': touches,
-                                    'type': 'descending'
-                                })
-        
-        # Take strongest trends (most touches)
-        ascending_trends.sort(key=lambda x: x['touches'], reverse=True)
-        descending_trends.sort(key=lambda x: x['touches'], reverse=True)
-        
-        return {
-            'ascending': ascending_trends[:3],  # Top 3 ascending trends
-            'descending': descending_trends[:3]  # Top 3 descending trends
-        }
-    
-    def detect_consolidation_zones(self, lookback_period=100, threshold=0.03):
-        """
-        Detect consolidation zones (trading ranges)
-        
-        Returns:
-        - List of consolidation zones with support/resistance boundaries
-        """
-        df = self.data.tail(lookback_period).copy()
-        if len(df) < 20:
-            return []
-        
-        consolidation_zones = []
-        
-        # Use rolling standard deviation to detect low volatility periods
-        rolling_std = df['Close'].rolling(window=20).std()
-        rolling_mean = df['Close'].rolling(window=20).mean()
-        volatility_ratio = rolling_std / rolling_mean
-        
-        # Find periods of low volatility
-        low_vol_threshold = volatility_ratio.quantile(0.3)
-        low_vol_periods = volatility_ratio < low_vol_threshold
-        
-        # Group consecutive low volatility periods
-        groups = []
-        current_group = []
-        
-        for i in range(len(low_vol_periods)):
-            if low_vol_periods.iloc[i] and i > 0 and low_vol_periods.iloc[i-1]:
-                if not current_group:
-                    # Find start of group
-                    start = i
-                    while start > 0 and low_vol_periods.iloc[start-1]:
-                        start -= 1
-                    current_group = list(range(start, i+1))
-                else:
-                    current_group.append(i)
-            else:
-                if current_group and len(current_group) >= 10:  # Minimum 10 days
-                    groups.append(current_group.copy())
-                current_group = []
-        
-        if current_group and len(current_group) >= 10:
-            groups.append(current_group)
-        
-        # Analyze each consolidation zone
-        for group in groups:
-            if len(group) > 0:
-                zone_data = df.iloc[group]
-                
-                support = zone_data['Low'].min()
-                resistance = zone_data['High'].max()
-                zone_range = resistance - support
-                range_pct = zone_range / support
-                
-                # Valid consolidation zone if range is small
-                if range_pct <= threshold:
-                    consolidation_zones.append({
-                        'start_date': df.index[group[0]],
-                        'end_date': df.index[group[-1]],
-                        'support': support,
-                        'resistance': resistance,
-                        'range_pct': range_pct * 100,
-                        'duration_days': len(group),
-                        'volume_avg': zone_data['Volume'].mean(),
-                        'breakout_direction': None
-                    })
-        
-        # Determine breakout direction for each zone
-        for zone in consolidation_zones:
-            end_idx = df.index.get_loc(zone['end_date'])
-            
-            # Check next 5 periods after consolidation
-            if end_idx + 5 < len(df):
-                post_consolidation = df.iloc[end_idx+1:end_idx+6]
-                
-                # Check if price broke above resistance
-                if post_consolidation['Close'].max() > zone['resistance'] * 1.02:
-                    zone['breakout_direction'] = 'BULLISH'
-                # Check if price broke below support
-                elif post_consolidation['Close'].min() < zone['support'] * 0.98:
-                    zone['breakout_direction'] = 'BEARISH'
-                else:
-                    zone['breakout_direction'] = 'CONSOLIDATING'
-        
-        return consolidation_zones
-    
-    def detect_fibonacci_levels(self, lookback_period=100):
-        """
-        Calculate Fibonacci retracement and extension levels
-        based on significant swing highs and lows
-        
-        Returns:
-        - Dictionary with Fibonacci levels
-        """
-        df = self.data.tail(lookback_period).copy()
-        if len(df) < 50:
-            return {}
-        
-        # Find significant swing high and low
-        swing_high = df['High'].max()
-        swing_low = df['Low'].min()
-        
-        # Fibonacci ratios
-        fib_ratios = {
-            'retracement': {
-                '0.0': swing_low,
-                '0.236': swing_low + (swing_high - swing_low) * 0.236,
-                '0.382': swing_low + (swing_high - swing_low) * 0.382,
-                '0.500': swing_low + (swing_high - swing_low) * 0.5,
-                '0.618': swing_low + (swing_high - swing_low) * 0.618,
-                '0.786': swing_low + (swing_high - swing_low) * 0.786,
-                '1.0': swing_high,
-            },
-            'extension': {
-                '1.272': swing_high + (swing_high - swing_low) * 0.272,
-                '1.414': swing_high + (swing_high - swing_low) * 0.414,
-                '1.618': swing_high + (swing_high - swing_low) * 0.618,
-                '2.0': swing_high + (swing_high - swing_low) * 1.0,
-                '2.618': swing_high + (swing_high - swing_low) * 1.618,
-            }
-        }
-        
-        current_price = df['Close'].iloc[-1]
-        
-        # Find nearest Fibonacci levels
-        nearest_retracement = min(fib_ratios['retracement'].values(), 
-                                  key=lambda x: abs(x - current_price))
-        nearest_extension = min(fib_ratios['extension'].values(), 
-                                key=lambda x: abs(x - current_price))
-        
-        return {
-            'swing_high': swing_high,
-            'swing_low': swing_low,
-            'retracement_levels': fib_ratios['retracement'],
-            'extension_levels': fib_ratios['extension'],
-            'current_price': current_price,
-            'nearest_retracement': nearest_retracement,
-            'nearest_extension': nearest_extension
-        }
-    
-    # ============================ END OF SUPPORT & RESISTANCE DETECTION ============================
     
     def detect_volume_profile(self):
         """Detect volume profile patterns with enhanced analysis"""
@@ -648,7 +274,7 @@ class IndianEquityAnalyzer:
         
         # Calculate price levels and volume distribution
         price_range = df['High'].max() - df['Low'].min()
-        num_bins = 70
+        num_bins = 70  # More bins for finer analysis
         bins = np.linspace(df['Low'].min(), df['High'].max(), num_bins)
         
         volume_at_price = []
@@ -659,6 +285,7 @@ class IndianEquityAnalyzer:
             volume_sum = df[mask]['Volume'].sum()
             volume_at_price.append(volume_sum)
             
+            # Calculate value traded (volume * average price)
             if mask.any():
                 avg_price = df[mask]['Close'].mean()
                 value_area_volumes.append(volume_sum * avg_price)
@@ -737,146 +364,1291 @@ class IndianEquityAnalyzer:
             'stats': volume_profile_stats
         }
     
-    # [Previous pattern detection methods remain the same - keeping them for brevity]
-    # Continuing with other methods...
-    
     def detect_chart_patterns(self):
         """Detect Dan Zanger's Chart Patterns with enhanced detection"""
-        # [Previous implementation - keeping as is]
-        # ... [previous code for pattern detection]
+        df = self.data.tail(100).copy()
+        if len(df) < 50:
+            return []
         
-        # We'll add support/resistance patterns here
         patterns = []
         
-        # Detect Support/Resistance patterns
-        sr_patterns = self.detect_support_resistance_patterns()
-        patterns.extend(sr_patterns)
+        # 1. Cup and Handle Pattern (Enhanced)
+        cup_handle_score = self.detect_cup_and_handle_enhanced(df)
+        if cup_handle_score > 0.7:
+            confidence = "HIGH" if cup_handle_score > 0.8 else "MEDIUM"
+            patterns.append({
+                'pattern': 'Cup and Handle',
+                'signal': 'BULLISH',
+                'confidence': confidence,
+                'score': cup_handle_score,
+                'description': 'Signature pattern - Most powerful in bull markets. Handle must be in upper half of cup with volume dry-up.',
+                'action': 'Enter LONG on breakout above handle with >3x volume',
+                'rules': [
+                    'Minimum 7-8 weeks for cup formation',
+                    'Handle should be 1-4 weeks',
+                    'Volume must confirm breakout',
+                    'Stop loss below handle low'
+                ]
+            })
+        
+        # 2. High Tight Flag (Enhanced)
+        high_tight_score = self.detect_high_tight_flag_enhanced(df)
+        if high_tight_score > 0.7:
+            confidence = "HIGH" if high_tight_score > 0.85 else "MEDIUM"
+            patterns.append({
+                'pattern': 'High Tight Flag',
+                'signal': 'BULLISH',
+                'confidence': confidence,
+                'score': high_tight_score,
+                'description': 'Rare and explosive pattern. Pole must be >20% gain in <4 weeks.',
+                'action': 'Enter on breakout with massive volume (>5x average)',
+                'rules': [
+                    'Flag should be <15% of pole',
+                    'Consolidation time: 3-5 weeks',
+                    'Volume dry-up during flag',
+                    'Stop loss below flag low'
+                ]
+            })
+        
+        # 3. Ascending Triangle
+        asc_triangle_score = self.detect_ascending_triangle_enhanced(df)
+        if asc_triangle_score > 0.7:
+            patterns.append({
+                'pattern': 'Ascending Triangle',
+                'signal': 'BULLISH',
+                'confidence': "MEDIUM",
+                'score': asc_triangle_score,
+                'description': 'Shows buyers getting aggressive at resistance. Higher lows indicate accumulation.',
+                'action': 'Breakout needs massive volume for confirmation',
+                'rules': [
+                    'At least 2-3 touches of resistance',
+                    '3-4 higher lows',
+                    'Breakout above resistance line',
+                    'Volume surge on breakout'
+                ]
+            })
+        
+        # 4. Flat Base (Williams' Pattern)
+        flat_base_score = self.detect_flat_base_enhanced(df)
+        if flat_base_score > 0.7:
+            patterns.append({
+                'pattern': 'Flat Base',
+                'signal': 'BULLISH',
+                'confidence': "MEDIUM",
+                'score': flat_base_score,
+                'description': 'Consolidation pattern indicating institutional accumulation.',
+                'action': 'Volume-fueled breakout required. Buy on pivot point breakout.',
+                'rules': [
+                    '5-12 week consolidation',
+                    '<15% price variation',
+                    'Volume contraction during base',
+                    'Volume expansion on breakout'
+                ]
+            })
+        
+        # 5. Falling Wedge (Reversal Pattern)
+        falling_wedge_score = self.detect_falling_wedge_enhanced(df)
+        if falling_wedge_score > 0.7:
+            patterns.append({
+                'pattern': 'Falling Wedge',
+                'signal': 'BULLISH',
+                'confidence': "MEDIUM",
+                'score': falling_wedge_score,
+                'description': 'Reversal pattern with converging downtrend lines. Shows selling pressure decreasing.',
+                'action': 'Enter on upside breakout with volume confirmation',
+                'rules': [
+                    'Both trendlines declining',
+                    'Range narrowing by 30-40%',
+                    'Volume decreasing in wedge',
+                    'Breakout above upper trendline'
+                ]
+            })
+        
+        # 6. Double Bottom (Reversal Pattern)
+        double_bottom_score = self.detect_double_bottom(df)
+        if double_bottom_score > 0.7:
+            patterns.append({
+                'pattern': 'Double Bottom',
+                'signal': 'BULLISH',
+                'confidence': "MEDIUM",
+                'score': double_bottom_score,
+                'description': 'W-shaped reversal pattern indicating strong support.',
+                'action': 'Buy on breakout above resistance line (neckline)',
+                'rules': [
+                    'Two distinct bottoms at similar price',
+                    'Volume higher on first bottom',
+                    'Neckline breakout with volume',
+                    'Minimum 10% move from second bottom'
+                ]
+            })
         
         return patterns
     
-    def detect_support_resistance_patterns(self):
-        """Detect patterns based on support and resistance"""
+    def detect_swing_patterns(self):
+        """Detect Qullamaggie's Swing School Patterns with enhanced detection"""
+        df = self.data.tail(60).copy()
+        if len(df) < 30:
+            return []
+        
         patterns = []
         
-        # Get support and resistance levels
-        sr_data = self.detect_support_resistance()
-        current_price = sr_data['current_price']
+        # 1. Breakout (High Tight Flag) - Qullamaggie Style
+        breakout_score = self.detect_qullamaggie_breakout(df)
+        if breakout_score > 0.7:
+            patterns.append({
+                'pattern': 'Breakout (High Tight Flag)',
+                'signal': 'BULLISH',
+                'confidence': "HIGH" if breakout_score > 0.8 else "MEDIUM",
+                'score': breakout_score,
+                'description': 'Stair-step pattern with VDU (Volume Dry Up). Qullamaggie: "Buyers stepping in early = tightening"',
+                'action': 'Enter on ORH (Opening Range High) with volume',
+                'rules': [
+                    '3-5 days of tight consolidation',
+                    'Volume Dry Up (VDU) present',
+                    'Above 10/20 EMA',
+                    'Institutional quality volume'
+                ]
+            })
         
-        # Pattern 1: Support Bounce
-        support_levels = sr_data['support']
-        if support_levels:
-            nearest_support = min(support_levels, key=lambda x: abs(x['price'] - current_price))
-            if abs(current_price - nearest_support['price']) / nearest_support['price'] < 0.02:
-                patterns.append({
-                    'pattern': 'Support Bounce',
-                    'signal': 'BULLISH',
-                    'confidence': 'HIGH' if nearest_support['strength'] > 2 else 'MEDIUM',
-                    'score': nearest_support['strength'] / 3,
-                    'description': f'Price bouncing off support at ₹{nearest_support["price"]:.2f}',
-                    'action': 'BUY with tight stop loss',
-                    'rules': [
-                        f'Stop loss below ₹{nearest_support["price"] * 0.98:.2f}',
-                        f'Target: Next resistance level'
-                    ]
-                })
+        # 2. Episodic Pivot (EP)
+        ep_score = self.detect_episodic_pivot_enhanced(df)
+        if ep_score > 0.7:
+            patterns.append({
+                'pattern': 'Episodic Pivot (EP)',
+                'signal': 'BULLISH',
+                'confidence': "HIGH",
+                'score': ep_score,
+                'description': 'ORH Entry with huge volume in first mins. Gap and Go price action.',
+                'action': 'Enter at ORH, hold for 2-3 day momentum',
+                'rules': [
+                    'Gap up > 2%',
+                    'First 5-min volume > 3x average',
+                    'Holds above ORH all day',
+                    'Follow-through next day'
+                ]
+            })
         
-        # Pattern 2: Resistance Test
-        resistance_levels = sr_data['resistance']
-        if resistance_levels:
-            nearest_resistance = min(resistance_levels, key=lambda x: abs(x['price'] - current_price))
-            if abs(current_price - nearest_resistance['price']) / nearest_resistance['price'] < 0.02:
-                patterns.append({
-                    'pattern': 'Resistance Test',
-                    'signal': 'BEARISH',
-                    'confidence': 'HIGH' if nearest_resistance['strength'] > 2 else 'MEDIUM',
-                    'score': nearest_resistance['strength'] / 3,
-                    'description': f'Price testing resistance at ₹{nearest_resistance["price"]:.2f}',
-                    'action': 'SELL or wait for breakout',
-                    'rules': [
-                        f'Breakout above ₹{nearest_resistance["price"] * 1.02:.2f} for bullish continuation',
-                        f'Rejection for bearish reversal'
-                    ]
-                })
+        # 3. Parabolic Short
+        parabolic_score = self.detect_parabolic_short_enhanced(df)
+        if parabolic_score > 0.7:
+            patterns.append({
+                'pattern': 'Parabolic Short',
+                'signal': 'BEARISH',
+                'confidence': "MEDIUM",
+                'score': parabolic_score,
+                'description': 'Vertical move extended from 10/20 EMA. Qullamaggie: "Wait for first crack"',
+                'action': 'Short on first red day, target 10/20 EMA reversion',
+                'rules': [
+                    '>30% move in 2-3 weeks',
+                    'Extended from 10 EMA by >15%',
+                    'Volume climax',
+                    'First red day with expanding range'
+                ]
+            })
         
-        # Pattern 3: Range Bound
-        consolidation_zones = self.detect_consolidation_zones()
-        if consolidation_zones:
-            latest_zone = consolidation_zones[-1]
-            if latest_zone['breakout_direction'] == 'CONSOLIDATING':
-                patterns.append({
-                    'pattern': 'Range Bound Trading',
-                    'signal': 'NEUTRAL',
-                    'confidence': 'MEDIUM',
-                    'score': 0.7,
-                    'description': f'Price consolidating between ₹{latest_zone["support"]:.2f} and ₹{latest_zone["resistance"]:.2f}',
-                    'action': 'Trade range boundaries',
-                    'rules': [
-                        f'Buy near ₹{latest_zone["support"]:.2f}',
-                        f'Sell near ₹{latest_zone["resistance"]:.2f}',
-                        f'Stop loss outside range'
-                    ]
-                })
+        # 4. Gap and Go (Momentum)
+        gap_go_score = self.detect_gap_and_go(df)
+        if gap_go_score > 0.7:
+            patterns.append({
+                'pattern': 'Gap and Go',
+                'signal': 'BULLISH',
+                'confidence': "HIGH",
+                'score': gap_go_score,
+                'description': 'Earnings/News gap with continuation. Institutional momentum.',
+                'action': 'Enter on gap fill hold or continuation',
+                'rules': [
+                    'Gap > 5%',
+                    'Holds gap throughout day',
+                    'Volume > 5x average',
+                    'No fill of gap same day'
+                ]
+            })
+        
+        # 5. ABCD Pattern (Harmonic)
+        abcd_score = self.detect_abcd_pattern(df)
+        if abcd_score > 0.7:
+            patterns.append({
+                'pattern': 'ABCD Pattern',
+                'signal': 'REVERSAL',
+                'confidence': "MEDIUM",
+                'score': abcd_score,
+                'description': 'Harmonic pattern with specific Fibonacci ratios.',
+                'action': 'Enter at completion of D point with confirmation',
+                'rules': [
+                    'AB = CD in price and time',
+                    'BC retracement 61.8-78.6% of AB',
+                    'CD extension 127.2-161.8% of BC',
+                    'Volume confirmation at reversal'
+                ]
+            })
         
         return patterns
     
-    # [Continuing with other methods...]
+    def detect_cup_and_handle_enhanced(self, df):
+        """Enhanced Cup and Handle detection with scoring"""
+        if len(df) < 60:
+            return 0
+        
+        score = 0
+        prices = df['Close'].values
+        volumes = df['Volume'].values
+        
+        # Find the cup (minimum price point)
+        min_price_idx = np.argmin(prices)
+        if min_price_idx < 20 or min_price_idx > len(prices) - 20:
+            return 0
+        
+        # Cup formation
+        cup_left = prices[:min_price_idx]
+        cup_right = prices[min_price_idx:]
+        
+        if len(cup_left) < 20 or len(cup_right) < 20:
+            return 0
+        
+        # Cup depth and shape analysis
+        cup_depth = (max(cup_left[0], cup_right[-1]) - prices[min_price_idx]) / max(cup_left[0], cup_right[-1])
+        
+        if 0.15 <= cup_depth <= 0.40:  # Ideal cup depth 15-40%
+            score += 0.3
+        
+        # Handle formation (last 15-25% of data)
+        handle_start = int(len(df) * 0.75)
+        handle_data = df.iloc[handle_start:]
+        
+        if len(handle_data) < 10:
+            return 0
+        
+        # Handle should be in upper half of cup
+        cup_top = max(cup_left[0], cup_right[-1])
+        cup_bottom = prices[min_price_idx]
+        cup_mid = (cup_top + cup_bottom) / 2
+        
+        handle_avg = handle_data['Close'].mean()
+        if handle_avg > cup_mid:
+            score += 0.2
+        
+        # Volume analysis
+        cup_volume = df['Volume'].iloc[:handle_start].mean()
+        handle_volume = handle_data['Volume'].mean()
+        
+        if handle_volume < cup_volume * 0.7:  # Volume dry up in handle
+            score += 0.2
+        
+        # Handle tightness
+        handle_range = (handle_data['High'].max() - handle_data['Low'].min()) / handle_avg
+        if handle_range < 0.15:  # Tight consolidation
+            score += 0.2
+        
+        # Overall price trend
+        left_trend = np.polyfit(range(len(cup_left)), cup_left, 1)[0]
+        right_trend = np.polyfit(range(len(cup_right)), cup_right, 1)[0]
+        
+        if left_trend < 0 and right_trend > 0:  # U-shape
+            score += 0.1
+        
+        return score
+    
+    def detect_high_tight_flag_enhanced(self, df):
+        """Enhanced High Tight Flag detection"""
+        if len(df) < 30:
+            return 0
+        
+        score = 0
+        recent = df.tail(30)
+        
+        # Identify pole (strong uptrend)
+        pole_length = min(15, len(recent) // 2)
+        pole_data = recent.head(pole_length)
+        pole_gain = (pole_data['Close'].iloc[-1] - pole_data['Close'].iloc[0]) / pole_data['Close'].iloc[0]
+        
+        if pole_gain > 0.20:  # Minimum 20% gain
+            score += 0.3
+        
+        # Flag consolidation
+        flag_data = recent.tail(len(recent) - pole_length)
+        flag_range = (flag_data['High'].max() - flag_data['Low'].min()) / flag_data['Close'].mean()
+        
+        if flag_range < 0.15:  # Tight flag
+            score += 0.3
+        
+        # Volume analysis
+        pole_volume = pole_data['Volume'].mean()
+        flag_volume = flag_data['Volume'].mean()
+        
+        if flag_volume < pole_volume * 0.6:  # Volume dry up
+            score += 0.2
+        
+        # Flag should be above midpoint of pole
+        pole_mid = (pole_data['Close'].iloc[0] + pole_data['Close'].iloc[-1]) / 2
+        flag_avg = flag_data['Close'].mean()
+        
+        if flag_avg > pole_mid:
+            score += 0.2
+        
+        return score
+    
+    def detect_ascending_triangle_enhanced(self, df):
+        """Enhanced Ascending Triangle detection"""
+        if len(df) < 30:
+            return 0
+        
+        score = 0
+        recent = df.tail(30)
+        
+        # Resistance line (flat top)
+        highs = recent['High'].values
+        resistance_slope = np.polyfit(range(len(highs)), highs, 1)[0]
+        resistance_variance = np.std(highs) / np.mean(highs)
+        
+        if resistance_variance < 0.02 and abs(resistance_slope) < 0.001:
+            score += 0.4
+        
+        # Support line (rising)
+        lows = recent['Low'].values
+        support_slope = np.polyfit(range(len(lows)), lows, 1)[0]
+        
+        if support_slope > 0.001:  # Rising support
+            score += 0.3
+        
+        # Volume pattern
+        volume_trend = np.polyfit(range(len(recent)), recent['Volume'].values, 1)[0]
+        if volume_trend < 0:  # Volume declining in triangle
+            score += 0.2
+        
+        # Breakout imminent check
+        current_close = recent['Close'].iloc[-1]
+        resistance_level = np.mean(highs[-5:])  # Recent resistance
+        
+        if current_close > resistance_level * 0.98:  # Near breakout
+            score += 0.1
+        
+        return score
+    
+    def detect_flat_base_enhanced(self, df):
+        """Enhanced Flat Base detection"""
+        if len(df) < 20:
+            return 0
+        
+        score = 0
+        recent = df.tail(20)
+        
+        # Price range analysis
+        price_range = (recent['High'].max() - recent['Low'].min()) / recent['Close'].mean()
+        
+        if price_range < 0.12:  # Tight consolidation
+            score += 0.4
+        
+        # Time analysis (5-12 weeks ideal)
+        if 15 <= len(recent) <= 60:  # 3-12 weeks of data
+            score += 0.2
+        
+        # Volume contraction
+        volume_mean = recent['Volume'].mean()
+        volume_std = recent['Volume'].std()
+        
+        if volume_std / volume_mean < 0.5:  # Low volume volatility
+            score += 0.2
+        
+        # Support level holding
+        support_level = recent['Low'].min()
+        recent_lows = recent['Low'].tail(5).values
+        
+        if all(low > support_level * 0.98 for low in recent_lows):
+            score += 0.2
+        
+        return score
+    
+    def detect_falling_wedge_enhanced(self, df):
+        """Enhanced Falling Wedge detection"""
+        if len(df) < 30:
+            return 0
+        
+        score = 0
+        recent = df.tail(30)
+        
+        highs = recent['High'].values
+        lows = recent['Low'].values
+        
+        # Both trendlines declining
+        high_trend = np.polyfit(range(len(highs)), highs, 1)[0]
+        low_trend = np.polyfit(range(len(lows)), lows, 1)[0]
+        
+        if high_trend < 0 and low_trend < 0:
+            score += 0.3
+        
+        # Converging trendlines (range narrowing)
+        early_range = recent.head(10)['High'].max() - recent.head(10)['Low'].min()
+        late_range = recent.tail(10)['High'].max() - recent.tail(10)['Low'].min()
+        
+        if late_range < early_range * 0.7:  # Range narrowed by 30%
+            score += 0.3
+        
+        # Volume declining
+        volume_trend = np.polyfit(range(len(recent)), recent['Volume'].values, 1)[0]
+        if volume_trend < 0:
+            score += 0.2
+        
+        # Near breakout (approaching convergence)
+        current_range = recent['High'].iloc[-1] - recent['Low'].iloc[-1]
+        if current_range < late_range * 1.1:  # Very tight range
+            score += 0.2
+        
+        return score
+    
+    def detect_double_bottom(self, df):
+        """Detect Double Bottom pattern"""
+        if len(df) < 40:
+            return 0
+        
+        score = 0
+        prices = df['Close'].values
+        
+        # Find local minima using simple method
+        minima_indices = []
+        for i in range(1, len(prices) - 1):
+            if prices[i] < prices[i-1] and prices[i] < prices[i+1]:
+                minima_indices.append(i)
+        
+        if len(minima_indices) >= 2:
+            # Get two most recent minima
+            trough1_idx = minima_indices[-2]
+            trough2_idx = minima_indices[-1]
+            
+            # Check if troughs are similar in price
+            trough1_price = prices[trough1_idx]
+            trough2_price = prices[trough2_idx]
+            
+            price_diff = abs(trough1_price - trough2_price) / trough1_price
+            
+            if price_diff < 0.03:  # Within 3%
+                score += 0.3
+            
+            # Check if there's a peak between them (neckline)
+            if trough2_idx - trough1_idx > 10:
+                between_prices = prices[trough1_idx:trough2_idx]
+                peak_idx = np.argmax(between_prices)
+                peak_price = between_prices[peak_idx]
+                
+                # Volume analysis
+                volume1 = df['Volume'].iloc[trough1_idx]
+                volume2 = df['Volume'].iloc[trough2_idx]
+                
+                if volume1 > volume2:  # First bottom higher volume
+                    score += 0.2
+                
+                # Current price relative to neckline
+                current_price = prices[-1]
+                if current_price > peak_price * 0.98:  # Near breakout
+                    score += 0.3
+        
+        return score
+    
+    def detect_qullamaggie_breakout(self, df):
+        """Detect Qullamaggie style breakout"""
+        if len(df) < 20:
+            return 0
+        
+        score = 0
+        recent = df.tail(20)
+        
+        # Check for higher lows (stair-step)
+        lows = recent['Low'].values
+        higher_lows = True
+        
+        for i in range(1, len(lows)):
+            if lows[i] < lows[i-1] * 0.98:  # More than 2% lower
+                higher_lows = False
+                break
+        
+        if higher_lows:
+            score += 0.3
+        
+        # Volume Dry Up (VDU)
+        recent_vol = recent['Volume'].tail(5).mean()
+        avg_vol = recent['Volume'].mean()
+        
+        if recent_vol < avg_vol * 0.6:
+            score += 0.3
+        
+        # Above key moving averages
+        if 'EMA_10' in recent.columns and 'EMA_20' in recent.columns:
+            current_price = recent['Close'].iloc[-1]
+            ema_10 = recent['EMA_10'].iloc[-1]
+            ema_20 = recent['EMA_20'].iloc[-1]
+            
+            if current_price > ema_10 and current_price > ema_20:
+                score += 0.2
+        
+        # Tight range consolidation
+        price_range = (recent['High'].max() - recent['Low'].min()) / recent['Close'].mean()
+        if price_range < 0.15:
+            score += 0.2
+        
+        return score
+    
+    def detect_episodic_pivot_enhanced(self, df):
+        """Enhanced Episodic Pivot detection"""
+        if len(df) < 10:
+            return 0
+        
+        score = 0
+        recent = df.tail(10)
+        
+        # Look for gap up with huge volume
+        gap_found = False
+        volume_spike_found = False
+        
+        for i in range(1, len(recent)):
+            prev_close = recent['Close'].iloc[i-1]
+            current_open = recent['Open'].iloc[i]
+            
+            gap = (current_open - prev_close) / prev_close
+            
+            if gap > 0.02:  # 2% gap
+                gap_found = True
+                
+                # Volume spike
+                current_volume = recent['Volume'].iloc[i]
+                avg_prev_volume = recent['Volume'].iloc[:i].mean()
+                
+                if current_volume > avg_prev_volume * 3:
+                    volume_spike_found = True
+        
+        if gap_found:
+            score += 0.4
+        
+        if volume_spike_found:
+            score += 0.4
+        
+        # Follow-through check
+        if len(recent) >= 3:
+            if recent['Close'].iloc[-1] > recent['Open'].iloc[-3]:  # Holding gains
+                score += 0.2
+        
+        return score
+    
+    def detect_parabolic_short_enhanced(self, df):
+        """Enhanced Parabolic Short detection"""
+        if len(df) < 20:
+            return 0
+        
+        score = 0
+        recent = df.tail(20)
+        
+        # Calculate recent gains
+        price_gain = (recent['Close'].iloc[-1] - recent['Close'].iloc[0]) / recent['Close'].iloc[0]
+        
+        if price_gain > 0.30:  # Minimum 30% gain
+            score += 0.3
+        
+        # Distance from moving averages
+        if 'EMA_10' in recent.columns and 'EMA_20' in recent.columns:
+            current_price = recent['Close'].iloc[-1]
+            ema_10 = recent['EMA_10'].iloc[-1]
+            ema_20 = recent['EMA_20'].iloc[-1]
+            
+            deviation_10 = (current_price - ema_10) / ema_10
+            deviation_20 = (current_price - ema_20) / ema_20
+            
+            if deviation_10 > 0.15 or deviation_20 > 0.20:
+                score += 0.3
+        
+        # Volume climax
+        recent_volume = recent['Volume'].tail(5).mean()
+        avg_volume = recent['Volume'].mean()
+        
+        if recent_volume > avg_volume * 2:  # Volume climax
+            score += 0.2
+        
+        # First sign of weakness
+        if len(recent) >= 3:
+            last_3 = recent.tail(3)
+            if last_3['Close'].iloc[-1] < last_3['Close'].iloc[-2]:  # First red day
+                score += 0.2
+        
+        return score
+    
+    def detect_gap_and_go(self, df):
+        """Detect Gap and Go pattern"""
+        if len(df) < 5:
+            return 0
+        
+        score = 0
+        recent = df.tail(5)
+        
+        # Check for gap
+        if len(recent) >= 2:
+            gap = (recent['Open'].iloc[1] - recent['Close'].iloc[0]) / recent['Close'].iloc[0]
+            
+            if gap > 0.05:  # 5% gap
+                score += 0.4
+                
+                # Volume surge
+                gap_volume = recent['Volume'].iloc[1]
+                prev_volume = recent['Volume'].iloc[0]
+                
+                if gap_volume > prev_volume * 3:
+                    score += 0.3
+                
+                # Gap holds (no fill)
+                day_low = recent['Low'].iloc[1]
+                prev_close = recent['Close'].iloc[0]
+                
+                if day_low > prev_close:  # Gap not filled
+                    score += 0.3
+        
+        return score
+    
+    def detect_abcd_pattern(self, df):
+        """Detect ABCD harmonic pattern"""
+        if len(df) < 40:
+            return 0
+        
+        score = 0
+        prices = df['Close'].values
+        
+        # Simple swing detection
+        swings = []
+        for i in range(1, len(prices)-1):
+            if prices[i] > prices[i-1] and prices[i] > prices[i+1]:
+                swings.append(('peak', i, prices[i]))
+            elif prices[i] < prices[i-1] and prices[i] < prices[i+1]:
+                swings.append(('trough', i, prices[i]))
+        
+        if len(swings) >= 4:
+            # Check for ABCD pattern
+            for i in range(len(swings)-3):
+                if (swings[i][0] == 'peak' and swings[i+1][0] == 'trough' and 
+                    swings[i+2][0] == 'peak' and swings[i+3][0] == 'trough'):
+                    
+                    A = swings[i][2]
+                    B = swings[i+1][2]
+                    C = swings[i+2][2]
+                    D = swings[i+3][2]
+                    
+                    # Calculate Fibonacci ratios
+                    AB = A - B
+                    BC = C - B
+                    CD = C - D
+                    
+                    if AB > 0 and BC > 0 and CD > 0:
+                        # Check for approximate Fibonacci ratios
+                        bc_ab_ratio = BC / AB
+                        cd_bc_ratio = CD / BC
+                        
+                        if 0.618 <= bc_ab_ratio <= 0.786:  # BC retracement
+                            score += 0.3
+                        if 1.272 <= cd_bc_ratio <= 1.618:  # CD extension
+                            score += 0.3
+                        
+                        # AB ≈ CD
+                        ab_cd_ratio = AB / CD
+                        if 0.8 <= ab_cd_ratio <= 1.2:
+                            score += 0.2
+        
+        return score
     
     def get_trading_signal(self):
         """Generate comprehensive trading signal with weighted scoring"""
-        # [Previous implementation]
-        # ... [existing code]
+        df = self.data
+        if df is None or len(df) < 50:
+            return "NO DATA", [], 0, "gray"
         
-        # Add support/resistance analysis to signals
-        sr_data = self.detect_support_resistance()
-        current_price = sr_data['current_price']
+        current = df.iloc[-1]
         
-        support_levels = sr_data['support']
-        resistance_levels = sr_data['resistance']
+        signals = []
+        score = 0
         
-        if support_levels:
-            nearest_support = min(support_levels, key=lambda x: abs(x['price'] - current_price))
-            support_distance = (current_price - nearest_support['price']) / current_price * 100
-            
-            if support_distance < 2:
-                signals.append(f"✅ Near strong support (₹{nearest_support['price']:.2f}, {nearest_support['touches']} touches)")
-                score += 5
-            elif support_distance < 5:
-                signals.append(f"⚠️ Approaching support (₹{nearest_support['price']:.2f})")
+        # Weighted scoring system
+        weights = {
+            'trend': 0.3,
+            'momentum': 0.25,
+            'volume': 0.2,
+            'volatility': 0.15,
+            'pattern': 0.1
+        }
         
-        if resistance_levels:
-            nearest_resistance = min(resistance_levels, key=lambda x: abs(x['price'] - current_price))
-            resistance_distance = (nearest_resistance['price'] - current_price) / current_price * 100
-            
-            if resistance_distance < 2:
-                signals.append(f"⚠️ Near strong resistance (₹{nearest_resistance['price']:.2f}, {nearest_resistance['touches']} touches)")
-                score -= 5
-            elif resistance_distance < 5:
-                signals.append(f"✅ Room to resistance (₹{nearest_resistance['price']:.2f})")
-                score += 2
+        # 1. Trend Analysis (30%)
+        trend_score = 0
+        trend_signals = []
         
-        # [Rest of the method remains the same]
-        # ... [existing code]
+        if current['Close'] > current['SMA_20']:
+            trend_signals.append("✅ Price above 20 SMA (Short-term bullish)")
+            trend_score += 1
+        else:
+            trend_signals.append("❌ Price below 20 SMA (Short-term bearish)")
+            trend_score -= 1
+        
+        if current['Close'] > current['SMA_50']:
+            trend_signals.append("✅ Price above 50 SMA (Medium-term bullish)")
+            trend_score += 2
+        else:
+            trend_signals.append("❌ Price below 50 SMA (Medium-term bearish)")
+            trend_score -= 2
+        
+        if current['Close'] > current['SMA_200']:
+            trend_signals.append("✅ Price above 200 SMA (Long-term bullish)")
+            trend_score += 3
+        else:
+            trend_signals.append("❌ Price below 200 SMA (Long-term bearish)")
+            trend_score -= 3
+        
+        # EMA alignment check
+        if (current['EMA_8'] > current['EMA_21'] > current['EMA_55'] and
+            current['Close'] > current['EMA_8']):
+            trend_signals.append("✅ All EMAs aligned bullish (8 > 21 > 55)")
+            trend_score += 2
+        
+        trend_normalized = trend_score / 8  # Normalize to -1 to 1
+        score += trend_normalized * weights['trend'] * 100
+        
+        # 2. Momentum Analysis (25%)
+        momentum_score = 0
+        momentum_signals = []
+        
+        # MACD
+        if current['MACD'] > current['MACD_Signal']:
+            momentum_signals.append("✅ MACD bullish (Above signal line)")
+            momentum_score += 2
+        else:
+            momentum_signals.append("❌ MACD bearish (Below signal line)")
+            momentum_score -= 2
+        
+        # RSI
+        if current['RSI_14'] > 70:
+            momentum_signals.append("⚠️ RSI Overbought (>70)")
+            momentum_score -= 1
+        elif current['RSI_14'] < 30:
+            momentum_signals.append("✅ RSI Oversold (<30)")
+            momentum_score += 2
+        else:
+            momentum_signals.append(f"✅ RSI Neutral ({current['RSI_14']:.1f})")
+        
+        # Stochastic
+        if current['Stoch_K'] > 80 and current['Stoch_D'] > 80:
+            momentum_signals.append("⚠️ Stochastic overbought")
+            momentum_score -= 1
+        elif current['Stoch_K'] < 20 and current['Stoch_D'] < 20:
+            momentum_signals.append("✅ Stochastic oversold")
+            momentum_score += 1
+        
+        momentum_normalized = momentum_score / 5
+        score += momentum_normalized * weights['momentum'] * 100
+        
+        # 3. Volume Analysis (20%)
+        volume_score = 0
+        volume_signals = []
+        
+        if current['Volume'] > current['Volume_SMA_20'] * 1.5:
+            volume_signals.append("✅ High volume (Strong interest)")
+            volume_score += 2
+        elif current['Volume'] < current['Volume_SMA_20'] * 0.5:
+            volume_signals.append("⚠️ Very low volume (Caution)")
+            volume_score -= 1
+        else:
+            volume_signals.append("✅ Average volume")
+        
+        # OBV trend
+        if len(df) > 20:
+            obv_trend = np.polyfit(range(20), df['OBV'].tail(20).values, 1)[0]
+            if obv_trend > 0:
+                volume_signals.append("✅ OBV trending up (Accumulation)")
+                volume_score += 1
+            else:
+                volume_signals.append("❌ OBV trending down (Distribution)")
+                volume_score -= 1
+        
+        volume_normalized = volume_score / 3
+        score += volume_normalized * weights['volume'] * 100
+        
+        # 4. Volatility Analysis (15%)
+        volatility_score = 0
+        volatility_signals = []
+        
+        # ATR relative position
+        atr_percent = current['ATR_14'] / current['Close'] * 100
+        if atr_percent > 3:
+            volatility_signals.append(f"⚠️ High volatility (ATR: {atr_percent:.1f}%)")
+            volatility_score -= 1
+        elif atr_percent < 1:
+            volatility_signals.append(f"✅ Low volatility (ATR: {atr_percent:.1f}%)")
+            volatility_score += 1
+        else:
+            volatility_signals.append(f"✅ Normal volatility (ATR: {atr_percent:.1f}%)")
+        
+        # Bollinger Band position
+        bb_position = (current['Close'] - current['BB_Lower']) / (current['BB_Upper'] - current['BB_Lower'])
+        if bb_position > 0.8:
+            volatility_signals.append("⚠️ Near BB upper band (Overbought)")
+            volatility_score -= 1
+        elif bb_position < 0.2:
+            volatility_signals.append("✅ Near BB lower band (Oversold)")
+            volatility_score += 1
+        
+        volatility_normalized = volatility_score / 2
+        score += volatility_normalized * weights['volatility'] * 100
+        
+        # 5. Pattern Detection (10%)
+        pattern_score = 0
+        pattern_signals = []
+        
+        patterns = self.detect_chart_patterns() + self.detect_swing_patterns()
+        bullish_patterns = sum(1 for p in patterns if p['signal'] == 'BULLISH')
+        bearish_patterns = sum(1 for p in patterns if p['signal'] == 'BEARISH')
+        
+        if bullish_patterns > bearish_patterns:
+            pattern_signals.append(f"✅ {bullish_patterns} bullish patterns detected")
+            pattern_score += 2
+        elif bearish_patterns > bullish_patterns:
+            pattern_signals.append(f"❌ {bearish_patterns} bearish patterns detected")
+            pattern_score -= 2
+        
+        pattern_normalized = pattern_score / 2
+        score += pattern_normalized * weights['pattern'] * 100
+        
+        # Combine all signals
+        signals.extend(trend_signals)
+        signals.extend(momentum_signals)
+        signals.extend(volume_signals)
+        signals.extend(volatility_signals)
+        signals.extend(pattern_signals)
+        
+        # Determine overall signal
+        if score >= 70:
+            overall = "🟢 STRONG BUY"
+            color = "green"
+        elif score >= 50:
+            overall = "🟢 BUY"
+            color = "lightgreen"
+        elif score >= 30:
+            overall = "🟡 ACCUMULATE"
+            color = "orange"
+        elif score >= 10:
+            overall = "🟡 HOLD"
+            color = "yellow"
+        elif score >= -10:
+            overall = "🟡 NEUTRAL"
+            color = "gray"
+        elif score >= -30:
+            overall = "🔴 SELL"
+            color = "pink"
+        else:
+            overall = "🔴 STRONG SELL"
+            color = "red"
         
         return overall, signals, score, color
+    
+    def get_risk_management(self, portfolio_value=1000000):
+        """Calculate advanced risk management parameters"""
+        df = self.data
+        if df is None or len(df) < 20:
+            return {}
+        
+        current_price = df['Close'].iloc[-1]
+        atr = df['ATR_14'].iloc[-1]
+        
+        # Multi-level stop loss strategy
+        stop_loss_levels = {
+            'tight': current_price - (1 * atr),  # 1 ATR stop (aggressive)
+            'normal': current_price - (1.5 * atr),  # 1.5 ATR stop (balanced)
+            'wide': current_price - (2 * atr),  # 2 ATR stop (conservative)
+            'percentage': current_price * 0.97,  # 3% hard stop
+            'technical': min(
+                df['Low'].tail(20).min(),
+                df['BB_Lower'].iloc[-1],
+                df['SMA_20'].iloc[-1] * 0.98
+            )
+        }
+        
+        recommended_stop = max(
+            stop_loss_levels['technical'],
+            stop_loss_levels['percentage'],
+            stop_loss_levels['normal']
+        )
+        
+        # Multi-level profit targets
+        profit_targets = {
+            'target_1': current_price * 1.10,  # 10% (quick profit)
+            'target_2': current_price * 1.20,  # 20% (primary target)
+            'target_3': current_price * 1.35,  # 35% (runner)
+            'fib_161': current_price * 1.618,  # Fibonacci extension
+            'measured_move': current_price + (current_price - recommended_stop) * 2  # 2:1 measured move
+        }
+        
+        # Position sizing based on risk
+        risk_per_share = current_price - recommended_stop
+        
+        # Calculate position size (1% portfolio risk rule)
+        max_risk_amount = portfolio_value * 0.01
+        
+        if risk_per_share > 0:
+            position_size = int(max_risk_amount / risk_per_share)
+            position_value = position_size * current_price
+            
+            # Additional constraints
+            max_position_value = portfolio_value * 0.25  # Max 25% in one position
+            if position_value > max_position_value:
+                position_size = int(max_position_value / current_price)
+                position_value = position_size * current_price
+            
+            actual_risk = position_size * risk_per_share
+            portfolio_risk_percent = (actual_risk / portfolio_value) * 100
+        else:
+            position_size = 0
+            position_value = 0
+            actual_risk = 0
+            portfolio_risk_percent = 0
+        
+        # Risk/Reward ratios
+        rr_ratios = {}
+        for target_name, target_price in profit_targets.items():
+            if risk_per_share > 0:
+                reward = target_price - current_price
+                rr_ratios[target_name] = reward / risk_per_share
+            else:
+                rr_ratios[target_name] = 0
+        
+        # Volatility-adjusted position sizing
+        volatility_score = atr / current_price * 100
+        position_adjustment = 1.0
+        
+        if volatility_score > 4:
+            position_adjustment = 0.7  # Reduce position by 30% for high volatility
+        elif volatility_score < 1.5:
+            position_adjustment = 1.2  # Increase position by 20% for low volatility
+        
+        adjusted_position_size = int(position_size * position_adjustment)
+        
+        return {
+            'entry_price': current_price,
+            'stop_loss': recommended_stop,
+            'stop_loss_levels': stop_loss_levels,
+            'profit_targets': profit_targets,
+            'risk_per_share': risk_per_share,
+            'position_size': adjusted_position_size,
+            'position_value': adjusted_position_size * current_price,
+            'portfolio_risk_percent': portfolio_risk_percent,
+            'risk_reward_ratios': rr_ratios,
+            'atr_percent': volatility_score,
+            'position_adjustment': position_adjustment,
+            'max_drawdown': (current_price - recommended_stop) / current_price * 100
+        }
+    
+    def get_market_context(self):
+        """Analyze broader market conditions"""
+        try:
+            # Nifty 50
+            nifty = yf.Ticker("^NSEI")
+            nifty_data = nifty.history(period='3mo')
+            
+            # India VIX
+            vix = yf.Ticker("^INDIAVIX")
+            vix_data = vix.history(period='1mo')
+            
+            if nifty_data.empty:
+                return {}
+            
+            current_nifty = nifty_data['Close'].iloc[-1]
+            nifty_sma_50 = nifty_data['Close'].rolling(window=50).mean().iloc[-1]
+            nifty_sma_200 = nifty_data['Close'].rolling(window=200).mean().iloc[-1]
+            
+            nifty_trend = "BULLISH" if current_nifty > nifty_sma_50 and current_nifty > nifty_sma_200 else "BEARISH"
+            
+            current_vix = vix_data['Close'].iloc[-1] if not vix_data.empty else None
+            
+            return {
+                'nifty_level': current_nifty,
+                'nifty_change': ((current_nifty - nifty_data['Close'].iloc[0]) / nifty_data['Close'].iloc[0]) * 100,
+                'nifty_trend': nifty_trend,
+                'above_50_sma': current_nifty > nifty_sma_50,
+                'above_200_sma': current_nifty > nifty_sma_200,
+                'vix': current_vix,
+                'market_condition': 'High Volatility' if current_vix and current_vix > 20 else 'Normal',
+                'vix_trend': 'FEAR' if current_vix and current_vix > 25 else 'GREED' if current_vix and current_vix < 15 else 'NEUTRAL'
+            }
+        except:
+            return {}
+    
+    def get_sector_analysis(self):
+        """Get sector and peer analysis"""
+        try:
+            info = self.ticker.info
+            sector = info.get('sector', '')
+            industry = info.get('industry', '')
+            
+            # Sector ETF mapping for Indian markets
+            sector_etfs = {
+                'Technology': 'INFY.NS',
+                'Financial Services': 'HDFCBANK.NS',
+                'Energy': 'RELIANCE.NS',
+                'Healthcare': 'SUNPHARMA.NS',
+                'Consumer Defensive': 'ITC.NS',
+                'Industrials': 'LT.NS',
+                'Communication Services': 'BHARTIARTL.NS',
+                'Basic Materials': 'TATASTEEL.NS',
+                'Utilities': 'NTPC.NS',
+                'Real Estate': 'DLF.NS',
+                'Consumer Cyclical': 'MARUTI.NS'
+            }
+            
+            if sector in sector_etfs:
+                sector_ticker = yf.Ticker(sector_etfs[sector])
+                sector_data = sector_ticker.history(period=self.period)
+                
+                if not sector_data.empty and not self.data.empty:
+                    stock_return = (self.data['Close'].iloc[-1] / self.data['Close'].iloc[0] - 1) * 100
+                    sector_return = (sector_data['Close'].iloc[-1] / sector_data['Close'].iloc[0] - 1) * 100
+                    
+                    # Calculate relative strength
+                    relative_strength = stock_return - sector_return
+                    
+                    # Beta calculation (simplified)
+                    if len(self.data) > 20 and len(sector_data) > 20:
+                        stock_returns = self.data['Close'].pct_change().dropna()
+                        sector_returns = sector_data['Close'].pct_change().dropna()
+                        
+                        # Align data
+                        common_index = stock_returns.index.intersection(sector_returns.index)
+                        if len(common_index) > 10:
+                            stock_returns_aligned = stock_returns.loc[common_index]
+                            sector_returns_aligned = sector_returns.loc[common_index]
+                            
+                            # Calculate beta
+                            covariance = np.cov(stock_returns_aligned, sector_returns_aligned)[0, 1]
+                            variance = np.var(sector_returns_aligned)
+                            beta = covariance / variance if variance != 0 else 1.0
+                        else:
+                            beta = 1.0
+                    else:
+                        beta = 1.0
+                    
+                    return {
+                        'sector': sector,
+                        'industry': industry,
+                        'stock_return': stock_return,
+                        'sector_return': sector_return,
+                        'outperformance': relative_strength,
+                        'relative_strength': 'OUTPERFORMING' if relative_strength > 5 else 'UNDERPERFORMING' if relative_strength < -5 else 'IN-LINE',
+                        'beta': beta,
+                        'risk_category': 'High Beta' if beta > 1.3 else 'Low Beta' if beta < 0.7 else 'Market Beta'
+                    }
+        except:
+            pass
+        
+        return None
+    
+    def get_company_info(self):
+        """Get comprehensive company fundamental information"""
+        info = {}
+        try:
+            ticker_info = self.ticker.info
+            
+            # Basic info
+            info['name'] = ticker_info.get('longName', self.symbol)
+            info['sector'] = ticker_info.get('sector', 'N/A')
+            info['industry'] = ticker_info.get('industry', 'N/A')
+            
+            # Financial metrics
+            market_cap = ticker_info.get('marketCap', 0)
+            info['market_cap'] = market_cap
+            info['market_cap_formatted'] = self.format_market_cap(market_cap)
+            
+            info['pe_ratio'] = ticker_info.get('trailingPE', 'N/A')
+            info['forward_pe'] = ticker_info.get('forwardPE', 'N/A')
+            info['pb_ratio'] = ticker_info.get('priceToBook', 'N/A')
+            info['peg_ratio'] = ticker_info.get('pegRatio', 'N/A')
+            
+            # Profitability
+            info['roe'] = ticker_info.get('returnOnEquity', 'N/A')
+            info['roa'] = ticker_info.get('returnOnAssets', 'N/A')
+            info['profit_margin'] = ticker_info.get('profitMargins', 'N/A')
+            
+            # Growth
+            info['revenue_growth'] = ticker_info.get('revenueGrowth', 'N/A')
+            info['earnings_growth'] = ticker_info.get('earningsGrowth', 'N/A')
+            
+            # Dividends
+            div_yield = ticker_info.get('dividendYield', 0)
+            info['dividend_yield'] = div_yield * 100 if div_yield else 0
+            info['payout_ratio'] = ticker_info.get('payoutRatio', 'N/A')
+            
+            # Valuation
+            info['eps'] = ticker_info.get('trailingEps', 'N/A')
+            info['forward_eps'] = ticker_info.get('forwardEps', 'N/A')
+            info['book_value'] = ticker_info.get('bookValue', 'N/A')
+            
+            # Price information
+            info['52w_high'] = ticker_info.get('fiftyTwoWeekHigh', 0)
+            info['52w_low'] = ticker_info.get('fiftyTwoWeekLow', 0)
+            info['beta'] = ticker_info.get('beta', 1.0)
+            
+            # Additional metrics
+            info['debt_to_equity'] = ticker_info.get('debtToEquity', 'N/A')
+            info['current_ratio'] = ticker_info.get('currentRatio', 'N/A')
+            info['quick_ratio'] = ticker_info.get('quickRatio', 'N/A')
+            
+            # Institutional info
+            info['held_by_institutions'] = ticker_info.get('heldPercentInstitutions', 'N/A')
+            info['short_ratio'] = ticker_info.get('shortRatio', 'N/A')
+            
+            # Description
+            info['description'] = ticker_info.get('longBusinessSummary', 'No description available.')
+            
+        except Exception as e:
+            st.warning(f"Could not fetch complete company info: {str(e)}")
+        
+        return info
 
-# ============================ PLOTTING FUNCTIONS ============================
+    def get_analyst_forecasts(self):
+        """
+        Get comprehensive analyst recommendations, price targets, and estimates
+        Enhanced version with earnings forecasts, revenue estimates, and recommendations trend
+        """
+        try:
+            info = self.ticker.info
+            current_price = self.data['Close'].iloc[-1] if self.data is not None and not self.data.empty else 0
+            
+            # Initialize comprehensive analyst data structure
+            analyst_data = {
+                'current_price': current_price,
+                'target_mean': info.get('targetMeanPrice'),
+                'target_high': info.get('targetHighPrice'),
+                'target_low': info.get('targetLowPrice'),
+                'target_median': info.get('targetMedianPrice'),
+                'recommendation': info.get('recommendationKey', 'hold'),
+                'num_analysts': info.get('numberOfAnalystOpinions', 0),
+                'current_year_eps': info.get('epsCurrentYear'),
+                'next_year_eps': info.get('epsForward'),
+                'eps_growth': info.get('earningsGrowth'),
+                'revenue_growth': info.get('revenueGrowth'),
+                'forward_pe': info.get('forwardPE'),
+                'peg_ratio': info.get('pegRatio'),
+                'upside_percent': None,
+                'risk_rating': 'N/A',
+                'recommendation_text': 'N/A',
+                'target_range': None,
+                'target_range_percent': None,
+                'recent_recommendations': [],
+                'recommendation_trend': {},
+                'consensus_score': None
+            }
+        
+            # Calculate upside
+            if analyst_data['target_mean'] and current_price > 0:
+                upside = ((analyst_data['target_mean'] - current_price) / current_price) * 100
+                analyst_data['upside_percent'] = round(upside, 2)
+                
+                if upside > 20:
+                    analyst_data['risk_rating'] = 'High Reward'
+                elif upside > 10:
+                    analyst_data['risk_rating'] = 'Moderate Reward'
+                elif upside > 0:
+                    analyst_data['risk_rating'] = 'Low Reward'
+                else:
+                    analyst_data['risk_rating'] = 'Overvalued'
 
-def create_support_resistance_chart(analyzer):
-    """Create chart with support and resistance levels"""
+            # Format recommendation
+            rec_map = {
+                'strong_buy': 'Strong Buy', 'buy': 'Buy', 'outperform': 'Outperform',
+                'hold': 'Hold', 'underperform': 'Underperform', 'sell': 'Sell'
+            }
+            rec_key = analyst_data['recommendation']
+            if rec_key:
+                analyst_data['recommendation_text'] = rec_map.get(rec_key.lower(), rec_key.title())
+            else:
+                analyst_data['recommendation_text'] = 'N/A'
+            
+            # Calculate target range
+            if analyst_data['target_high'] and analyst_data['target_low']:
+                target_range = analyst_data['target_high'] - analyst_data['target_low']
+                analyst_data['target_range'] = target_range
+                if analyst_data['target_mean']:
+                    analyst_data['target_range_percent'] = (target_range / analyst_data['target_mean']) * 100
+            
+            # Try to get recommendations trend
+            try:
+                recommendations = self.ticker.recommendations
+                if recommendations is not None and not recommendations.empty:
+                    recent = recommendations.tail(10)
+                    analyst_data['recent_recommendations'] = recent.to_dict('records')
+                    
+                    if 'To Grade' in recent.columns:
+                        rec_counts = recent['To Grade'].value_counts().to_dict()
+                        analyst_data['recommendation_trend'] = rec_counts
+                        
+                        grade_weights = {
+                            'Strong Buy': 5, 'Buy': 4, 'Outperform': 4,
+                            'Hold': 3, 'Neutral': 3, 'Underperform': 2, 'Sell': 1
+                        }
+                        total_score = sum(grade_weights.get(grade, 3) * count for grade, count in rec_counts.items())
+                        total_recs = sum(rec_counts.values())
+                        if total_recs > 0:
+                            analyst_data['consensus_score'] = round(total_score / total_recs, 2)
+            except:
+                pass
+        
+            # Try to get earnings calendar
+            try:
+                calendar = self.ticker.calendar
+                if calendar is not None and not calendar.empty:
+                    if len(calendar) > 0:
+                        if 'Earnings Date' in calendar.columns:
+                            analyst_data['next_earnings_date'] = str(calendar['Earnings Date'].iloc[0])[:10]
+                        if 'Earnings Average' in calendar.columns:
+                            analyst_data['earnings_estimate'] = calendar['Earnings Average'].iloc[0]
+            except:
+                pass
+            
+            return analyst_data
+        
+        except Exception as e:
+            # Fallback to basic data
+            try:
+                info = self.ticker.info
+                current_price = self.data['Close'].iloc[-1] if self.data is not None and not self.data.empty else 0
+                
+                return {
+                    'current_price': current_price,
+                    'target_mean': info.get('targetMeanPrice'),
+                    'target_high': info.get('targetHighPrice'),
+                    'target_low': info.get('targetLowPrice'),
+                    'recommendation': info.get('recommendationKey', 'N/A'),
+                    'recommendation_text': info.get('recommendationKey', 'N/A').title() if info.get('recommendationKey') else 'N/A',
+                    'num_analysts': info.get('numberOfAnalystOpinions', 0),
+                    'upside_percent': None,
+                    'error': str(e)
+                }
+            except:
+                return {
+                    'current_price': self.data['Close'].iloc[-1] if self.data is not None and not self.data.empty else 0,
+                    'target_mean': None,
+                    'recommendation_text': 'Not Available',
+                    'num_analysts': 0,
+                    'upside_percent': None
+                }
+    
+    def format_market_cap(self, market_cap):
+        """Format market cap to readable string"""
+        if market_cap >= 1e12:
+            return f"₹{market_cap/1e12:.2f} Lac Cr"
+        elif market_cap >= 1e10:
+            return f"₹{market_cap/1e10:.2f} K Cr"
+        elif market_cap >= 1e7:
+            return f"₹{market_cap/1e7:.2f} Cr"
+        else:
+            return f"₹{market_cap:,.0f}"
+
+def create_candlestick_chart(analyzer):
+    """Create advanced candlestick chart with multiple indicators"""
     df = analyzer.data.tail(100)
     
-    # Get support and resistance data
-    sr_data = analyzer.detect_support_resistance()
-    trend_lines = analyzer.detect_trend_lines()
-    fib_levels = analyzer.detect_fibonacci_levels()
-    
-    # Create figure
+    # Create subplots
     fig = make_subplots(
-        rows=2, cols=1,
+        rows=5, cols=1,
         shared_xaxes=True,
-        vertical_spacing=0.05,
-        row_heights=[0.7, 0.3],
-        subplot_titles=(f'{analyzer.symbol} - Support & Resistance Analysis', 'Volume')
+        vertical_spacing=0.03,
+        row_heights=[0.35, 0.15, 0.15, 0.15, 0.2],
+        subplot_titles=('Price Action with Indicators', 'MACD', 'RSI', 'Stochastic', 'Volume Profile')
     )
     
     # Candlestick
@@ -894,112 +1666,71 @@ def create_support_resistance_chart(analyzer):
         row=1, col=1
     )
     
-    # Plot support levels
-    for i, support in enumerate(sr_data['support']):
-        fig.add_hline(
-            y=support['price'],
-            line_dash="dash",
-            line_color="green",
-            line_width=2,
-            opacity=0.7,
-            row=1, col=1,
-            annotation_text=f"S{i+1}: ₹{support['price']:.2f} ({support['touches']} touches)",
-            annotation_position="bottom right"
-        )
+    # Moving Averages
+    fig.add_trace(go.Scatter(x=df.index, y=df['SMA_20'], name='SMA 20', 
+                            line=dict(color='orange', width=1.5)), row=1, col=1)
+    fig.add_trace(go.Scatter(x=df.index, y=df['SMA_50'], name='SMA 50', 
+                            line=dict(color='blue', width=1.5)), row=1, col=1)
+    fig.add_trace(go.Scatter(x=df.index, y=df['SMA_200'], name='SMA 200', 
+                            line=dict(color='red', width=2)), row=1, col=1)
     
-    # Plot resistance levels
-    for i, resistance in enumerate(sr_data['resistance']):
-        fig.add_hline(
-            y=resistance['price'],
-            line_dash="dash",
-            line_color="red",
-            line_width=2,
-            opacity=0.7,
-            row=1, col=1,
-            annotation_text=f"R{i+1}: ₹{resistance['price']:.2f} ({resistance['touches']} touches)",
-            annotation_position="top right"
-        )
+    # Exponential Moving Averages
     
-    # Plot trend lines
-    for trend in trend_lines['ascending']:
-        start_date = trend['start_date']
-        end_date = trend['end_date']
-        
-        # Create line coordinates
-        x_vals = [start_date, end_date]
-        y_vals = [trend['start_price'], trend['end_price']]
-        
-        fig.add_trace(
-            go.Scatter(
-                x=x_vals,
-                y=y_vals,
-                mode='lines',
-                line=dict(color='blue', width=2, dash='dot'),
-                name=f'Asc Trend ({trend["touches"]} pts)'
-            ),
-            row=1, col=1
-        )
+    fig.add_trace(go.Scatter(x=df.index, y=df['EMA_21'], name='EMA 21', 
+                            line=dict(color='green', width=1, dash='dash')), row=1, col=1)
+    fig.add_trace(go.Scatter(x=df.index, y=df['EMA_70'], name='EMA 70', 
+                            line=dict(color='brown', width=1, dash='dash')), row=1, col=1)
     
-    for trend in trend_lines['descending']:
-        start_date = trend['start_date']
-        end_date = trend['end_date']
-        
-        x_vals = [start_date, end_date]
-        y_vals = [trend['start_price'], trend['end_price']]
-        
-        fig.add_trace(
-            go.Scatter(
-                x=x_vals,
-                y=y_vals,
-                mode='lines',
-                line=dict(color='orange', width=2, dash='dot'),
-                name=f'Desc Trend ({trend["touches"]} pts)'
-            ),
-            row=1, col=1
-        )
+    # Bollinger Bands
+    fig.add_trace(go.Scatter(x=df.index, y=df['BB_Upper'], name='BB Upper', 
+                            line=dict(color='gray', width=1, dash='dot'), fillcolor='rgba(128,128,128,0.2)',
+                            fill='tonexty'), row=1, col=1)
+    fig.add_trace(go.Scatter(x=df.index, y=df['BB_Lower'], name='BB Lower', 
+                            line=dict(color='gray', width=1, dash='dot'), fill='tonexty'), row=1, col=1)
     
-    # Plot Fibonacci levels
-    if fib_levels:
-        retracement_colors = {
-            '0.236': 'rgba(255,165,0,0.3)',
-            '0.382': 'rgba(255,140,0,0.4)',
-            '0.500': 'rgba(255,69,0,0.5)',
-            '0.618': 'rgba(255,0,0,0.6)',
-            '0.786': 'rgba(178,34,34,0.7)'
-        }
-        
-        for level, price in fib_levels['retracement_levels'].items():
-            if level not in ['0.0', '1.0']:
-                fig.add_hline(
-                    y=price,
-                    line_dash="dot",
-                    line_color="purple",
-                    line_width=1,
-                    opacity=0.5,
-                    row=1, col=1,
-                    annotation_text=f"Fib {level}",
-                    annotation_position="left"
-                )
+    # VWAP
+    fig.add_trace(go.Scatter(x=df.index, y=df['VWAP'], name='VWAP', 
+                            line=dict(color='magenta', width=1.5, dash='dashdot')), row=1, col=1)
+    
+    # MACD
+    fig.add_trace(go.Scatter(x=df.index, y=df['MACD'], name='MACD', 
+                            line=dict(color='blue', width=2)), row=2, col=1)
+    fig.add_trace(go.Scatter(x=df.index, y=df['MACD_Signal'], name='Signal', 
+                            line=dict(color='red', width=1.5)), row=2, col=1)
+    
+    # MACD Histogram
+    colors = ['#26a69a' if val >= 0 else '#ef5350' for val in df['MACD_Hist']]
+    fig.add_trace(go.Bar(x=df.index, y=df['MACD_Hist'], name='MACD Hist', 
+                        marker_color=colors, opacity=0.6), row=2, col=1)
+    
+    # RSI
+    fig.add_trace(go.Scatter(x=df.index, y=df['RSI_14'], name='RSI 14', 
+                            line=dict(color='purple', width=2)), row=3, col=1)
+    fig.add_hline(y=70, line_dash="dash", line_color="red", row=3, col=1)
+    fig.add_hline(y=30, line_dash="dash", line_color="green", row=3, col=1)
+    fig.add_hrect(y0=30, y1=70, line_width=0, fillcolor="gray", opacity=0.1, row=3, col=1)
+    
+    # Stochastic
+    fig.add_trace(go.Scatter(x=df.index, y=df['Stoch_K'], name='Stoch %K', 
+                            line=dict(color='blue', width=2)), row=4, col=1)
+    fig.add_trace(go.Scatter(x=df.index, y=df['Stoch_D'], name='Stoch %D', 
+                            line=dict(color='red', width=1.5)), row=4, col=1)
+    fig.add_hline(y=80, line_dash="dash", line_color="red", row=4, col=1)
+    fig.add_hline(y=20, line_dash="dash", line_color="green", row=4, col=1)
     
     # Volume
     colors_vol = ['#26a69a' if df['Close'].iloc[i] >= df['Open'].iloc[i] else '#ef5350' 
                   for i in range(len(df))]
-    fig.add_trace(
-        go.Bar(
-            x=df.index,
-            y=df['Volume'],
-            name='Volume',
-            marker_color=colors_vol,
-            opacity=0.7
-        ),
-        row=2, col=1
-    )
+    fig.add_trace(go.Bar(x=df.index, y=df['Volume'], name='Volume', 
+                        marker_color=colors_vol, opacity=0.7), row=5, col=1)
+    fig.add_trace(go.Scatter(x=df.index, y=df['Volume_SMA_20'], name='Vol SMA 20', 
+                            line=dict(color='orange', width=1.5)), row=5, col=1)
     
     # Update layout
     fig.update_layout(
-        title=f'{analyzer.symbol} - Support & Resistance Analysis',
+        title=f'{analyzer.symbol} - Advanced Technical Analysis',
         xaxis_rangeslider_visible=False,
-        height=800,
+        height=1400,
         showlegend=True,
         hovermode='x unified',
         template='plotly_white',
@@ -1012,235 +1743,159 @@ def create_support_resistance_chart(analyzer):
         )
     )
     
-    fig.update_xaxes(title_text="Date", row=2, col=1)
+    fig.update_xaxes(title_text="Date", row=5, col=1)
     fig.update_yaxes(title_text="Price", row=1, col=1)
-    fig.update_yaxes(title_text="Volume", row=2, col=1)
+    fig.update_yaxes(title_text="MACD", row=2, col=1)
+    fig.update_yaxes(title_text="RSI", row=3, col=1)
+    fig.update_yaxes(title_text="Stochastic", row=4, col=1)
+    fig.update_yaxes(title_text="Volume", row=5, col=1)
     
     return fig
 
-def create_consolidation_zones_chart(analyzer):
-    """Create chart highlighting consolidation zones"""
-    df = analyzer.data.tail(100)
-    consolidation_zones = analyzer.detect_consolidation_zones()
+def create_volume_profile_chart(analyzer):
+    """Create comprehensive volume profile chart"""
+    vp = analyzer.detect_volume_profile()
     
-    fig = make_subplots(
-        rows=1, cols=1,
-        subplot_titles=(f'{analyzer.symbol} - Consolidation Zones',)
-    )
-    
-    # Candlestick
-    fig.add_trace(
-        go.Candlestick(
-            x=df.index,
-            open=df['Open'],
-            high=df['High'],
-            low=df['Low'],
-            close=df['Close'],
-            name='OHLC',
-            increasing_line_color='#17e817',
-            decreasing_line_color='#f55433'
-        )
-    )
-    
-    # Plot consolidation zones
-    for i, zone in enumerate(consolidation_zones):
-        # Add rectangle for consolidation zone
-        fig.add_shape(
-            type="rect",
-            x0=zone['start_date'],
-            x1=zone['end_date'],
-            y0=zone['support'],
-            y1=zone['resistance'],
-            fillcolor="rgba(128,128,128,0.2)",
-            line=dict(color="gray", width=1),
-            opacity=0.3
-        )
-        
-        # Add zone label
-        fig.add_annotation(
-            x=zone['end_date'],
-            y=zone['resistance'],
-            text=f"Zone {i+1}<br>{zone['range_pct']:.1f}% range<br>{zone['duration_days']} days",
-            showarrow=True,
-            arrowhead=2,
-            arrowsize=1,
-            arrowwidth=2,
-            arrowcolor="gray",
-            font=dict(size=10)
-        )
-        
-        # Add breakout indicator if applicable
-        if zone['breakout_direction'] == 'BULLISH':
-            fig.add_annotation(
-                x=zone['end_date'] + pd.Timedelta(days=2),
-                y=zone['resistance'] * 1.05,
-                text="🟢 Bullish Breakout",
-                showarrow=False,
-                font=dict(color="green", size=10)
-            )
-        elif zone['breakout_direction'] == 'BEARISH':
-            fig.add_annotation(
-                x=zone['end_date'] + pd.Timedelta(days=2),
-                y=zone['support'] * 0.95,
-                text="🔴 Bearish Breakout",
-                showarrow=False,
-                font=dict(color="red", size=10)
-            )
-    
-    # Update layout
-    fig.update_layout(
-        height=600,
-        showlegend=False,
-        hovermode='x unified',
-        template='plotly_white'
-    )
-    
-    return fig
-
-def create_fibonacci_chart(analyzer):
-    """Create chart with Fibonacci retracement levels"""
-    df = analyzer.data.tail(100)
-    fib_data = analyzer.detect_fibonacci_levels()
-    
-    if not fib_data:
+    if not vp:
         return go.Figure()
     
     fig = make_subplots(
-        rows=1, cols=1,
-        subplot_titles=(f'{analyzer.symbol} - Fibonacci Analysis',)
+        rows=1, cols=2,
+        specs=[[{'type': 'xy'}, {'type': 'domain'}]],
+        subplot_titles=('Volume Profile', 'Value Area Distribution'),
+        column_widths=[0.7, 0.3]
     )
     
-    # Candlestick
-    fig.add_trace(
-        go.Candlestick(
-            x=df.index,
-            open=df['Open'],
-            high=df['High'],
-            low=df['Low'],
-            close=df['Close'],
-            name='OHLC',
-            increasing_line_color='#17e817',
-            decreasing_line_color='#f55433'
+    # Volume Profile Bars
+    bin_centers = (vp['price_bins'][:-1] + vp['price_bins'][1:]) / 2
+    
+    fig.add_trace(go.Bar(
+        y=bin_centers,
+        x=vp['volume_distribution'],
+        orientation='h',
+        name='Volume',
+        marker=dict(
+            color=vp['volume_distribution'],
+            colorscale='Viridis',
+            showscale=True,
+            colorbar=dict(title="Volume")
         )
-    )
+    ), row=1, col=1)
     
-    # Add swing high/low markers
-    fig.add_trace(
-        go.Scatter(
-            x=[df.index[df['High'].idxmax()]],
-            y=[fib_data['swing_high']],
-            mode='markers+text',
-            marker=dict(color='red', size=12, symbol='triangle-down'),
-            text=['Swing High'],
-            textposition='top center',
-            name='Swing High'
-        )
-    )
+    # Point of Control
+    fig.add_hline(y=vp['poc_price'], line_dash="solid", line_color="red", 
+                  line_width=3, row=1, col=1,
+                  annotation_text=f"POC: ₹{vp['poc_price']:.2f}")
     
-    fig.add_trace(
-        go.Scatter(
-            x=[df.index[df['Low'].idxmin()]],
-            y=[fib_data['swing_low']],
-            mode='markers+text',
-            marker=dict(color='green', size=12, symbol='triangle-up'),
-            text=['Swing Low'],
-            textposition='bottom center',
-            name='Swing Low'
-        )
-    )
+    # Value Area
+    fig.add_hrect(y0=vp['value_area_low'], y1=vp['value_area_high'], 
+                  line_width=0, fillcolor="red", opacity=0.2,
+                  annotation_text=f"Value Area ({vp['value_area_percentage']:.1f}%)",
+                  annotation_position="right", row=1, col=1)
     
-    # Add Fibonacci retracement levels
-    fib_colors = {
-        '0.0': 'green',
-        '0.236': 'lightgreen',
-        '0.382': 'yellow',
-        '0.500': 'orange',
-        '0.618': 'red',
-        '0.786': 'darkred',
-        '1.0': 'darkgreen'
-    }
+    # Current Price
+    current_price = analyzer.data['Close'].iloc[-1]
+    fig.add_hline(y=current_price, line_dash="dash", line_color="green",
+                  line_width=2, row=1, col=1,
+                  annotation_text=f"Current: ₹{current_price:.2f}")
     
-    for level, price in fib_data['retracement_levels'].items():
-        fig.add_hline(
-            y=price,
-            line_dash="dash",
-            line_color=fib_colors.get(level, 'gray'),
-            line_width=2,
-            opacity=0.7,
-            annotation_text=f"Fib {level}",
-            annotation_position="left"
-        )
+    # Value Distribution (Pie Chart)
+    value_labels = ['High Volume Nodes', 'Value Area', 'Low Volume Nodes']
     
-    # Add current price marker
-    current_price = df['Close'].iloc[-1]
-    fig.add_hline(
-        y=current_price,
-        line_dash="solid",
-        line_color="blue",
-        line_width=3,
-        annotation_text=f"Current: ₹{current_price:.2f}",
-        annotation_position="right"
-    )
+    # Calculate percentages
+    high_volume_value = np.sum(vp['value_distribution'][vp['volume_distribution'] > 
+                                                       np.percentile(vp['volume_distribution'], 70)])
+    low_volume_value = np.sum(vp['value_distribution'][vp['volume_distribution'] < 
+                                                      np.percentile(vp['volume_distribution'], 30)])
+    other_value = np.sum(vp['value_distribution']) - high_volume_value - low_volume_value
     
-    # Update layout
+    values = [high_volume_value, other_value, low_volume_value]
+
+    fig.add_trace(go.Pie(
+        labels=value_labels,
+        values=values,
+        hole=0.4,
+        marker=dict(colors=['#00cc96', '#636efa', '#ef553b']),
+        textinfo='percent+label'
+     ), row=1, col=2)
+    
     fig.update_layout(
+        title='Volume Profile Analysis',
         height=600,
         showlegend=True,
-        hovermode='x unified',
-        template='plotly_white',
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=1.02,
-            xanchor="right",
-            x=1
-        )
+        template='plotly_white'
     )
     
-    return fig
-
-def create_candlestick_chart(analyzer):
-    """Create advanced candlestick chart with multiple indicators"""
-    # [Previous implementation - keeping as is]
-    # ... [existing code]
-    
-    # We'll add support/resistance to this chart too
-    sr_data = analyzer.detect_support_resistance()
-    
-    # Add key support and resistance levels to the chart
-    if sr_data['support']:
-        key_support = sr_data['support'][0]  # Strongest support
-        fig.add_hline(
-            y=key_support['price'],
-            line_dash="dash",
-            line_color="green",
-            line_width=2,
-            row=1, col=1,
-            annotation_text=f"Key Support: ₹{key_support['price']:.2f}",
-            annotation_position="bottom right"
-        )
-    
-    if sr_data['resistance']:
-        key_resistance = sr_data['resistance'][0]  # Strongest resistance
-        fig.add_hline(
-            y=key_resistance['price'],
-            line_dash="dash",
-            line_color="red",
-            line_width=2,
-            row=1, col=1,
-            annotation_text=f"Key Resistance: ₹{key_resistance['price']:.2f}",
-            annotation_position="top right"
-        )
+    fig.update_xaxes(title_text='Volume', row=1, col=1)
+    fig.update_yaxes(title_text='Price', row=1, col=1)
     
     return fig
 
-# ============================ MAIN APPLICATION ============================
+def create_pattern_summary_card(pattern):
+    """Create a styled card for pattern display"""
+    if pattern['signal'] == 'BULLISH':
+        color_class = "bullish"
+        icon = "📈"
+    elif pattern['signal'] == 'BEARISH':
+        color_class = "bearish"
+        icon = "📉"
+    else:
+        color_class = "neutral"
+        icon = "⚖️"
+    
+    card_html = f"""
+    <div class="pattern-card">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div>
+                <h3 style="margin: 0; color: white;">{icon} {pattern['pattern']}</h3>
+                <p style="margin: 5px 0; color: #f0f0f0;">Signal: <span class="{color_class}">{pattern['signal']}</span></p>
+            </div>
+            <div style="text-align: right;">
+                <p style="margin: 0; color: #f0f0f0;">Confidence: {pattern['confidence']}</p>
+                <p style="margin: 0; color: #f0f0f0;">Score: {pattern['score']:.2f}</p>
+            </div>
+        </div>
+        <hr style="border-color: rgba(255,255,255,0.2); margin: 10px 0;">
+        <p style="margin: 5px 0; color: #f0f0f0;"><strong>Description:</strong> {pattern['description']}</p>
+        <p style="margin: 5px 0; color: #f0f0f0;"><strong>Action:</strong> {pattern['action']}</p>
+    </div>
+    """
+    return card_html
+
+def export_analysis_report(analyzer, patterns, risk_params, signal_info):
+    """Export analysis to CSV format"""
+    import io
+    
+    # Create summary DataFrame
+    summary_data = {
+        'Symbol': [analyzer.symbol],
+        'Analysis Date': [datetime.now().strftime('%Y-%m-%d %H:%M:%S')],
+        'Current Price': [analyzer.data['Close'].iloc[-1] if analyzer.data is not None else 'N/A'],
+        'Trading Signal': [signal_info[0]],
+        'Signal Score': [signal_info[2]],
+        'Patterns Detected': [', '.join([p['pattern'] for p in patterns]) if patterns else 'None'],
+        'Stop Loss': [risk_params.get('stop_loss', 'N/A')],
+        'Position Size': [risk_params.get('position_size', 'N/A')],
+        'Risk/Reward 1:': [risk_params.get('risk_reward_ratios', {}).get('target_1', 'N/A')],
+        'Portfolio Risk %': [risk_params.get('portfolio_risk_percent', 'N/A')],
+        'ATR %': [risk_params.get('atr_percent', 'N/A')],
+        'Max Drawdown %': [risk_params.get('max_drawdown', 'N/A')]
+    }
+    
+    df = pd.DataFrame(summary_data)
+    
+    # Convert to CSV
+    csv_buffer = io.StringIO()
+    df.to_csv(csv_buffer, index=False)
+    csv_content = csv_buffer.getvalue()
+    
+    return csv_content
 
 def main():
     """Main Streamlit application"""
     
     st.markdown('<div class="main-header">🎯 Indian Equity Market Analyzer Pro</div>', unsafe_allow_html=True)
-    st.markdown('<p style="text-align: center; color: gray;">Master Trader Grade Analysis with Support/Resistance Detection</p>', unsafe_allow_html=True)
+    st.markdown('<p style="text-align: center; color: gray;">Master Trader Grade Analysis - Dan Zanger & Qullamaggie Strategies</p>', unsafe_allow_html=True)
     
     # Sidebar
     with st.sidebar:
@@ -1262,27 +1917,6 @@ def main():
             index=3
         )
         
-        # Support/Resistance Settings
-        st.markdown("---")
-        st.markdown("### Support/Resistance Settings")
-        
-        sr_lookback = st.slider(
-            "Lookback Period (days)",
-            min_value=50,
-            max_value=200,
-            value=100,
-            help="Number of days to analyze for S/R"
-        )
-        
-        sr_threshold = st.slider(
-            "Level Merge Threshold (%)",
-            min_value=0.5,
-            max_value=5.0,
-            value=2.0,
-            step=0.5,
-            help="Merge levels within this percentage"
-        )
-        
         # Portfolio size for risk management
         portfolio_value = st.number_input(
             "Portfolio Value (₹)",
@@ -1297,7 +1931,6 @@ def main():
         st.markdown("---")
         st.markdown("### Analysis Options")
         
-        show_sr = st.checkbox("Show Support/Resistance Analysis", value=True)
         show_advanced = st.checkbox("Show Advanced Analysis", value=True)
         show_patterns = st.checkbox("Show Pattern Detection", value=True)
         show_risk = st.checkbox("Show Risk Management", value=True)
@@ -1316,15 +1949,6 @@ def main():
         st.markdown("---")
         st.markdown("### 📚 Pattern Library")
         
-        with st.expander("Support & Resistance Patterns"):
-            st.markdown("""
-            - **Support Bounce**: Price bouncing off support level
-            - **Resistance Test**: Price testing resistance level
-            - **Range Bound**: Price consolidating in a range
-            - **Trend Line Break**: Breaking ascending/descending trend lines
-            - **Fibonacci Retracement**: Price reacting to Fibonacci levels
-            """)
-        
         with st.expander("Dan Zanger Patterns"):
             st.markdown("""
             - **Cup and Handle**: Most reliable bullish pattern
@@ -1342,6 +1966,23 @@ def main():
             - **Gap and Go**: Continuation pattern
             - **ABCD Pattern**: Harmonic trading
             """)
+        
+        st.markdown("---")
+        st.markdown("### 🎓 Trading Rules")
+        
+        st.info("""
+        **Zanger's Golden Rules:**
+        1. Volume confirms every breakout
+        2. 8% absolute stop loss
+        3. Focus on liquid leaders
+        4. Patience in pattern formation
+        
+        **Qullamaggie's Discipline:**
+        1. Never risk >1% per trade
+        2. Trade market leaders only
+        3. ORH entry for momentum
+        4. Quick profits, trail winners
+        """)
     
     if analyze_btn and symbol:
         with st.spinner(f'🔄 Analyzing {symbol}...'):
@@ -1401,166 +2042,279 @@ def main():
                     st.metric("52W High", f"₹{info.get('52w_high', 0):.2f}")
                 with price_cols[4]:
                     st.metric("52W Low", f"₹{info.get('52w_low', 0):.2f}")
+
+                # ==================== ADVANCED ANALYST FORECASTS SECTION ====================
                 
-                # ==================== SUPPORT & RESISTANCE ANALYSIS ====================
+                st.markdown('<div class="sub-header">📊 Analyst Forecasts & Estimates</div>', unsafe_allow_html=True)
                 
-                if show_sr:
-                    st.markdown('<div class="sub-header">📊 Support & Resistance Analysis</div>', unsafe_allow_html=True)
+                try:
+                    forecasts = analyzer.get_analyst_forecasts()
                     
-                    # Get S/R data
-                    sr_data = analyzer.detect_support_resistance(lookback_period=sr_lookback, threshold=sr_threshold/100)
-                    trend_lines = analyzer.detect_trend_lines()
-                    consolidation_zones = analyzer.detect_consolidation_zones()
-                    fib_levels = analyzer.detect_fibonacci_levels()
-                    
-                    # Display S/R Levels
-                    col1, col2 = st.columns(2)
-                    
-                    with col1:
-                        st.markdown("#### 🟢 Support Levels")
-                        if sr_data['support']:
-                            support_df = pd.DataFrame([
-                                {
-                                    'Level': f'S{i+1}',
-                                    'Price': f'₹{s["price"]:.2f}',
-                                    'Touches': s['touches'],
-                                    'Strength': 'Strong' if s['strength'] > 2 else 'Medium' if s['strength'] > 1 else 'Weak',
-                                    'Distance': f'{((sr_data["current_price"] - s["price"]) / sr_data["current_price"] * 100):.1f}%'
-                                }
-                                for i, s in enumerate(sr_data['support'])
-                            ])
-                            st.dataframe(support_df, use_container_width=True, hide_index=True)
-                        else:
-                            st.info("No significant support levels detected")
-                    
-                    with col2:
-                        st.markdown("#### 🔴 Resistance Levels")
-                        if sr_data['resistance']:
-                            resistance_df = pd.DataFrame([
-                                {
-                                    'Level': f'R{i+1}',
-                                    'Price': f'₹{r["price"]:.2f}',
-                                    'Touches': r['touches'],
-                                    'Strength': 'Strong' if r['strength'] > 2 else 'Medium' if r['strength'] > 1 else 'Weak',
-                                    'Distance': f'{((r["price"] - sr_data["current_price"]) / sr_data["current_price"] * 100):.1f}%'
-                                }
-                                for i, r in enumerate(sr_data['resistance'])
-                            ])
-                            st.dataframe(resistance_df, use_container_width=True, hide_index=True)
-                        else:
-                            st.info("No significant resistance levels detected")
-                    
-                    # Display Trend Lines
-                    st.markdown("#### 📈 Trend Lines")
-                    trend_cols = st.columns(2)
-                    
-                    with trend_cols[0]:
-                        st.markdown("**Ascending Trends**")
-                        if trend_lines['ascending']:
-                            for i, trend in enumerate(trend_lines['ascending']):
-                                st.markdown(f"""
-                                **Trend {i+1}:**
-                                - Start: ₹{trend['start_price']:.2f}
-                                - End: ₹{trend['end_price']:.2f}
-                                - Slope: {trend['slope']:.4f}/day
-                                - Touches: {trend['touches']} points
-                                """)
-                        else:
-                            st.info("No ascending trend lines detected")
-                    
-                    with trend_cols[1]:
-                        st.markdown("**Descending Trends**")
-                        if trend_lines['descending']:
-                            for i, trend in enumerate(trend_lines['descending']):
-                                st.markdown(f"""
-                                **Trend {i+1}:**
-                                - Start: ₹{trend['start_price']:.2f}
-                                - End: ₹{trend['end_price']:.2f}
-                                - Slope: {trend['slope']:.4f}/day
-                                - Touches: {trend['touches']} points
-                                """)
-                        else:
-                            st.info("No descending trend lines detected")
-                    
-                    # Display Consolidation Zones
-                    st.markdown("#### 🎯 Consolidation Zones")
-                    if consolidation_zones:
-                        for i, zone in enumerate(consolidation_zones):
-                            color = "green" if zone['breakout_direction'] == 'BULLISH' else "red" if zone['breakout_direction'] == 'BEARISH' else "gray"
-                            icon = "🟢" if zone['breakout_direction'] == 'BULLISH' else "🔴" if zone['breakout_direction'] == 'BEARISH' else "⚪"
-                            
-                            st.markdown(f"""
-                            **Zone {i+1}** {icon}
-                            - Support: ₹{zone['support']:.2f}
-                            - Resistance: ₹{zone['resistance']:.2f}
-                            - Range: {zone['range_pct']:.1f}%
-                            - Duration: {zone['duration_days']} days
-                            - Breakout: **{zone['breakout_direction']}**
-                            """)
-                    else:
-                        st.info("No consolidation zones detected")
-                    
-                    # Display Fibonacci Levels
-                    st.markdown("#### 🔢 Fibonacci Levels")
-                    if fib_levels:
-                        col1, col2 = st.columns(2)
+                    # Check if we have meaningful data
+                    if forecasts.get('num_analysts', 0) > 0 or forecasts.get('target_mean'):
+                        
+                        # ========== ROW 1: Price Targets & Recommendations ==========
+                        st.markdown("#### 🎯 Price Targets & Analyst Consensus")
+                        col1, col2, col3, col4, col5 = st.columns(5)
                         
                         with col1:
-                            st.markdown("**Retracement Levels**")
-                            retracement_df = pd.DataFrame([
-                                {'Level': level, 'Price': f'₹{price:.2f}'}
-                                for level, price in fib_levels['retracement_levels'].items()
-                            ])
-                            st.dataframe(retracement_df, use_container_width=True, hide_index=True)
+                            rec_text = forecasts.get('recommendation_text', 'N/A')
+                            # Color code the recommendation
+                            if rec_text in ['Strong Buy', 'Buy', 'Outperform']:
+                                rec_color = '🟢'
+                            elif rec_text in ['Hold', 'Neutral']:
+                                rec_color = '🟡'
+                            else:
+                                rec_color = '🔴'
+                            st.metric("Consensus", f"{rec_color} {rec_text}")
                         
                         with col2:
-                            st.markdown("**Extension Levels**")
-                            extension_df = pd.DataFrame([
-                                {'Level': level, 'Price': f'₹{price:.2f}'}
-                                for level, price in fib_levels['extension_levels'].items()
+                            num_analysts = forecasts.get('num_analysts', 0)
+                            st.metric("Analysts Covering", f"{num_analysts}")
+                        
+                        with col3:
+                            target_mean = forecasts.get('target_mean')
+                            if target_mean:
+                                st.metric("Avg Target", f"₹{target_mean:,.2f}")
+                            else:
+                                st.metric("Avg Target", "N/A")
+                        
+                        with col4:
+                            upside = forecasts.get('upside_percent')
+                            if upside is not None:
+                                delta_color = "normal" if upside >= 0 else "inverse"
+                                st.metric("Upside/Downside", f"{upside:+.1f}%", delta_color=delta_color)
+                            else:
+                                st.metric("Upside/Downside", "N/A")
+                        
+                        with col5:
+                            risk_rating = forecasts.get('risk_rating', 'N/A')
+                            st.metric("Risk/Reward", risk_rating)
+                        
+                        # ========== ROW 2: Target Range ==========
+                        if forecasts.get('target_high') and forecasts.get('target_low'):
+                            st.markdown("#### 📈 Price Target Range")
+                            col1, col2, col3, col4 = st.columns(4)
+                            
+                            with col1:
+                                st.metric("Target High", f"₹{forecasts['target_high']:,.2f}")
+                            with col2:
+                                st.metric("Target Mean", f"₹{forecasts['target_mean']:,.2f}")
+                            with col3:
+                                st.metric("Target Low", f"₹{forecasts['target_low']:,.2f}")
+                            with col4:
+                                target_range_pct = forecasts.get('target_range_percent')
+                                if target_range_pct:
+                                    st.metric("Analyst Spread", f"{target_range_pct:.1f}%")
+                                else:
+                                    st.metric("Analyst Spread", "N/A")
+                        
+                        # ========== ROW 3: Earnings Estimates ==========
+                        st.markdown("#### 💰 Earnings & Revenue Estimates")
+                        col1, col2, col3, col4 = st.columns(4)
+                        
+                        with col1:
+                            eps_current = forecasts.get('current_year_eps')
+                            if eps_current:
+                                st.metric("Current Year EPS", f"₹{eps_current:.2f}")
+                            else:
+                                st.metric("Current Year EPS", "N/A")
+                        
+                        with col2:
+                            eps_next = forecasts.get('next_year_eps')
+                            if eps_next:
+                                growth_rate = None
+                                if eps_current and eps_current > 0:
+                                    growth_rate = ((eps_next - eps_current) / eps_current) * 100
+                                st.metric("Next Year EPS", f"₹{eps_next:.2f}", 
+                                         f"{growth_rate:+.1f}%" if growth_rate else None)
+                            else:
+                                st.metric("Next Year EPS", "N/A")
+                        
+                        with col3:
+                            eps_growth = forecasts.get('earnings_growth')
+                            if eps_growth:
+                                st.metric("EPS Growth Rate", f"{eps_growth*100:.1f}%")
+                            else:
+                                st.metric("EPS Growth Rate", "N/A")
+                        
+                        with col4:
+                            revenue_growth = forecasts.get('revenue_growth')
+                            if revenue_growth:
+                                st.metric("Revenue Growth", f"{revenue_growth*100:.1f}%")
+                            else:
+                                st.metric("Revenue Growth", "N/A")
+                        
+                        # ========== ROW 4: Valuation Metrics ==========
+                        st.markdown("#### 📊 Forward Valuation Metrics")
+                        col1, col2, col3, col4 = st.columns(4)
+                        
+                        with col1:
+                            forward_pe = forecasts.get('forward_pe')
+                            if forward_pe:
+                                st.metric("Forward P/E", f"{forward_pe:.2f}")
+                            else:
+                                st.metric("Forward P/E", "N/A")
+                        
+                        with col2:
+                            peg = forecasts.get('peg_ratio')
+                            if peg:
+                                peg_signal = "Undervalued" if peg < 1 else "Fairly Valued" if peg < 2 else "Overvalued"
+                                st.metric("PEG Ratio", f"{peg:.2f}", peg_signal)
+                            else:
+                                st.metric("PEG Ratio", "N/A")
+                        
+                        with col3:
+                            next_earnings = forecasts.get('next_earnings_date')
+                            if next_earnings:
+                                st.metric("Next Earnings", str(next_earnings)[:10])
+                            else:
+                                st.metric("Next Earnings", "N/A")
+                        
+                        with col4:
+                            earnings_est = forecasts.get('earnings_estimate')
+                            if earnings_est:
+                                st.metric("Est. EPS (Next Qtr)", f"₹{earnings_est:.2f}")
+                            else:
+                                st.metric("Est. EPS (Next Qtr)", "N/A")
+                        
+                        # ========== RECOMMENDATION TREND CHART ==========
+                        if forecasts.get('recommendation_trend'):
+                            st.markdown("#### 📉 Recent Analyst Recommendation Trend")
+                            
+                            trend_data = forecasts['recommendation_trend']
+                            
+                            # Create bar chart
+                            fig_trend = go.Figure(data=[
+                                go.Bar(
+                                    x=list(trend_data.keys()),
+                                    y=list(trend_data.values()),
+                                    marker=dict(
+                                        color=['#00cc00' if 'Buy' in k or 'Outperform' in k 
+                                               else '#ff9900' if 'Hold' in k or 'Neutral' in k 
+                                               else '#ff0000' 
+                                               for k in trend_data.keys()]
+                                    ),
+                                    text=list(trend_data.values()),
+                                    textposition='auto'
+                                )
                             ])
-                            st.dataframe(extension_df, use_container_width=True, hide_index=True)
+                            
+                            fig_trend.update_layout(
+                                title="Distribution of Recent Analyst Recommendations",
+                                xaxis_title="Recommendation",
+                                yaxis_title="Number of Analysts",
+                                height=300,
+                                template='plotly_white'
+                            )
+                            
+                            st.plotly_chart(fig_trend, use_container_width=True)
+                            
+                            # Consensus score
+                            consensus_score = forecasts.get('consensus_score')
+                            if consensus_score:
+                                st.markdown(f"""
+                                **Consensus Score:** {consensus_score:.2f}/5.0  
+                                *(5=Strong Buy, 4=Buy, 3=Hold, 2=Underperform, 1=Sell)*
+                                """)
                         
-                        # Current position relative to Fibonacci
-                        current_price = fib_levels['current_price']
-                        nearest_retracement = fib_levels['nearest_retracement']
-                        distance_to_fib = abs(current_price - nearest_retracement) / nearest_retracement * 100
+                        # ========== RECENT ANALYST ACTIONS ==========
+                        if forecasts.get('recent_recommendations'):
+                            with st.expander("📋 Recent Analyst Actions (Last 10)"):
+                                recent_recs = forecasts['recent_recommendations']
+                                
+                                # Create DataFrame
+                                rec_df = pd.DataFrame(recent_recs)
+                                
+                                # Format and display
+                                if not rec_df.empty:
+                                    # Select relevant columns
+                                    display_cols = []
+                                    if 'Date' in rec_df.columns or rec_df.index.name:
+                                        rec_df['Date'] = rec_df.index if 'Date' not in rec_df.columns else rec_df['Date']
+                                        rec_df['Date'] = pd.to_datetime(rec_df['Date']).dt.strftime('%Y-%m-%d')
+                                        display_cols.append('Date')
+                                    
+                                    for col in ['Firm', 'To Grade', 'From Grade', 'Action']:
+                                        if col in rec_df.columns:
+                                            display_cols.append(col)
+                                    
+                                    if display_cols:
+                                        st.dataframe(
+                                            rec_df[display_cols].head(10),
+                                            use_container_width=True,
+                                            hide_index=True
+                                        )
+                                else:
+                                    st.info("No recent analyst actions available.")
                         
-                        st.markdown(f"""
-                        **Current Position:**
-                        - Price: ₹{current_price:.2f}
-                        - Nearest Fibonacci: ₹{nearest_retracement:.2f}
-                        - Distance: {distance_to_fib:.1f}%
+                        # ========== INTERPRETATION & INSIGHTS ==========
+                        st.markdown("#### 💡 Analyst Insights")
+                        
+                        insights = []
+                        
+                        # Upside insight
+                        if upside:
+                            if upside > 20:
+                                insights.append(f"✅ **Strong Upside**: Analysts see {upside:.1f}% upside potential - significant room for growth")
+                            elif upside > 10:
+                                insights.append(f"✅ **Moderate Upside**: {upside:.1f}% upside indicates positive outlook")
+                            elif upside > 0:
+                                insights.append(f"⚠️ **Limited Upside**: Only {upside:.1f}% upside - stock fairly valued")
+                            else:
+                                insights.append(f"🔴 **Overvalued**: {upside:.1f}% indicates stock may be overpriced")
+                        
+                        # Consensus insight
+                        if rec_text:
+                            if rec_text in ['Strong Buy', 'Buy']:
+                                insights.append("✅ **Bullish Consensus**: Analysts recommend buying")
+                            elif rec_text in ['Hold', 'Neutral']:
+                                insights.append("⚠️ **Neutral Stance**: Analysts suggest holding current positions")
+                            else:
+                                insights.append("🔴 **Bearish Consensus**: Analysts recommend caution or selling")
+                        
+                        # Growth insight
+                        if eps_growth and eps_growth > 0:
+                            insights.append(f"📈 **Positive Growth**: {eps_growth*100:.1f}% earnings growth expected")
+                        elif eps_growth and eps_growth < 0:
+                            insights.append(f"📉 **Negative Growth**: {eps_growth*100:.1f}% earnings decline expected")
+                        
+                        # PEG insight
+                        if peg:
+                            if peg < 1:
+                                insights.append(f"💰 **Undervalued**: PEG ratio of {peg:.2f} suggests stock is undervalued relative to growth")
+                            elif peg > 2:
+                                insights.append(f"⚠️ **Expensive**: PEG ratio of {peg:.2f} suggests stock may be overvalued")
+                        
+                        # Analyst coverage insight
+                        if num_analysts:
+                            if num_analysts > 15:
+                                insights.append(f"👥 **High Coverage**: {num_analysts} analysts covering - well-researched stock")
+                            elif num_analysts < 5:
+                                insights.append(f"⚠️ **Low Coverage**: Only {num_analysts} analysts - less market consensus")
+                        
+                        # Display insights
+                        if insights:
+                            for insight in insights:
+                                st.markdown(f"• {insight}")
+                        else:
+                            st.info("Limited analyst data available for detailed insights.")
+                    
+                    else:
+                        st.info("""
+                        **Limited Analyst Coverage**  
+                        This stock has limited analyst coverage. This is common for:
+                        - Smaller market cap companies
+                        - Recently listed stocks
+                        - Less liquid securities
+                        
+                        **Alternative Analysis**: Use technical indicators and fundamental metrics shown above.
                         """)
+
+                except Exception as e:
+                    st.error(f"Could not fetch analyst forecasts: {str(e)}")
+                    st.info("Try analyzing a large-cap stock like RELIANCE, TCS, or HDFCBANK for comprehensive analyst data.")
                     
-                    # S/R Charts
-                    st.markdown("#### 📊 Support & Resistance Charts")
-                    
-                    sr_chart_tabs = st.tabs(["S/R Levels", "Consolidation Zones", "Fibonacci"])
-                    
-                    with sr_chart_tabs[0]:
-                        fig_sr = create_support_resistance_chart(analyzer)
-                        st.plotly_chart(fig_sr, use_container_width=True)
-                    
-                    with sr_chart_tabs[1]:
-                        if consolidation_zones:
-                            fig_consolidation = create_consolidation_zones_chart(analyzer)
-                            st.plotly_chart(fig_consolidation, use_container_width=True)
-                        else:
-                            st.info("No consolidation zones to display")
-                    
-                    with sr_chart_tabs[2]:
-                        if fib_levels:
-                            fig_fib = create_fibonacci_chart(analyzer)
-                            st.plotly_chart(fig_fib, use_container_width=True)
-                        else:
-                            st.info("Insufficient data for Fibonacci analysis")
-                
-                # ==================== CONTINUE WITH EXISTING ANALYSIS ====================
-                
-                # [Rest of the existing analysis code remains the same]
-                # ... [existing code for trading signals, patterns, etc.]
-                
                 # Trading Signal
                 st.markdown('<div class="sub-header">🎯 Trading Signal & Analysis</div>', unsafe_allow_html=True)
                 
@@ -1609,76 +2363,44 @@ def main():
                 if show_patterns:
                     st.markdown('<div class="sub-header">📈 Pattern Detection</div>', unsafe_allow_html=True)
                     
-                    pattern_tabs = st.tabs(["Support/Resistance", "Dan Zanger", "Qullamaggie", "All Patterns"])
+                    pattern_tabs = st.tabs(["Dan Zanger Patterns", "Qullamaggie Patterns", "All Patterns"])
                     
                     with pattern_tabs[0]:
-                        sr_patterns = analyzer.detect_support_resistance_patterns()
-                        if sr_patterns:
-                            for pattern in sr_patterns:
-                                # Create pattern card
-                                if pattern['signal'] == 'BULLISH':
-                                    color_class = "bullish"
-                                    icon = "📈"
-                                elif pattern['signal'] == 'BEARISH':
-                                    color_class = "bearish"
-                                    icon = "📉"
-                                else:
-                                    color_class = "neutral"
-                                    icon = "⚖️"
-                                
-                                card_html = f"""
-                                <div class="pattern-card">
-                                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                                        <div>
-                                            <h3 style="margin: 0; color: white;">{icon} {pattern['pattern']}</h3>
-                                            <p style="margin: 5px 0; color: #f0f0f0;">Signal: <span class="{color_class}">{pattern['signal']}</span></p>
-                                        </div>
-                                        <div style="text-align: right;">
-                                            <p style="margin: 0; color: #f0f0f0;">Confidence: {pattern['confidence']}</p>
-                                            <p style="margin: 0; color: #f0f0f0;">Score: {pattern['score']:.2f}</p>
-                                        </div>
-                                    </div>
-                                    <hr style="border-color: rgba(255,255,255,0.2); margin: 10px 0;">
-                                    <p style="margin: 5px 0; color: #f0f0f0;"><strong>Description:</strong> {pattern['description']}</p>
-                                    <p style="margin: 5px 0; color: #f0f0f0;"><strong>Action:</strong> {pattern['action']}</p>
-                                </div>
-                                """
-                                st.markdown(card_html, unsafe_allow_html=True)
+                        zanger_patterns = analyzer.detect_chart_patterns()
+                        if zanger_patterns:
+                            for pattern in zanger_patterns:
+                                st.markdown(create_pattern_summary_card(pattern), unsafe_allow_html=True)
                                 
                                 with st.expander("View Rules & Details"):
                                     st.markdown("**Rules to Follow:**")
                                     for rule in pattern.get('rules', []):
                                         st.markdown(f"• {rule}")
                         else:
-                            st.info("No support/resistance patterns detected")
+                            st.info("No Dan Zanger patterns detected in current timeframe.")
                     
                     with pattern_tabs[1]:
-                        zanger_patterns = analyzer.detect_chart_patterns()
-                        if zanger_patterns:
-                            for pattern in zanger_patterns:
-                                # [Existing pattern display code]
-                                pass
-                        else:
-                            st.info("No Dan Zanger patterns detected")
-                    
-                    with pattern_tabs[2]:
                         swing_patterns = analyzer.detect_swing_patterns()
                         if swing_patterns:
                             for pattern in swing_patterns:
-                                # [Existing pattern display code]
-                                pass
+                                st.markdown(create_pattern_summary_card(pattern), unsafe_allow_html=True)
+    
+                                with st.expander("View Rules & Details"):
+                                    st.markdown("**Rules to Follow:**")
+                                    for rule in pattern.get('rules', []):
+                                        st.markdown(f"• {rule}")
                         else:
-                            st.info("No Qullamaggie patterns detected")
+                            st.info("No Qullamaggie swing patterns detected in current timeframe.")
                     
-                    with pattern_tabs[3]:
-                        all_patterns = sr_patterns + zanger_patterns + swing_patterns
+                    with pattern_tabs[2]:
+                        all_patterns = zanger_patterns + swing_patterns
                         if all_patterns:
+                            # Create pattern summary table
                             pattern_df = pd.DataFrame([{
                                 'Pattern': p['pattern'],
                                 'Signal': p['signal'],
                                 'Confidence': p['confidence'],
                                 'Score': p['score'],
-                                'Description': p['description'][:100] + '...'
+                                'Description': p['description']
                             } for p in all_patterns])
                             
                             st.dataframe(
@@ -1698,10 +2420,99 @@ def main():
                                 }
                             )
                         else:
-                            st.warning("No trading patterns detected")
+                            st.warning("No trading patterns detected.")
                 
-                # [Continue with rest of existing code...]
-                # Risk Management, Market Context, Technical Charts, etc.
+                # Risk Management
+                if show_risk:
+                    st.markdown('<div class="sub-header">⚠️ Advanced Risk Management</div>', unsafe_allow_html=True)
+                    
+                    risk_mgmt = analyzer.get_risk_management(portfolio_value)
+                    
+                    risk_cols = st.columns(3)
+                    
+                    with risk_cols[0]:
+                        st.markdown("### Entry & Stops")
+                        st.metric("Entry Price", f"₹{risk_mgmt['entry_price']:.2f}")
+                        
+                        # Stop loss levels
+                        with st.expander("Stop Loss Levels"):
+                            for level_name, stop_price in risk_mgmt['stop_loss_levels'].items():
+                                stop_percent = ((risk_mgmt['entry_price'] - stop_price) / risk_mgmt['entry_price']) * 100
+                                st.metric(
+                                    f"{level_name.title()}",
+                                    f"₹{stop_price:.2f}",
+                                    f"-{stop_percent:.1f}%"
+                                )
+                    
+                    with risk_cols[1]:
+                        st.markdown("### Position Sizing")
+                        st.metric("Position Size", f"{risk_mgmt['position_size']:,} shares")
+                        st.metric("Position Value", f"₹{risk_mgmt['position_value']:,.2f}")
+                        st.metric("Portfolio Risk", f"{risk_mgmt['portfolio_risk_percent']:.2f}%")
+                        st.metric("Max Drawdown", f"{risk_mgmt['max_drawdown']:.1f}%")
+                        
+                    with risk_cols[2]:
+                        st.markdown("### Profit Targets")
+                        for target_name, target_price in risk_mgmt['profit_targets'].items():
+                            if 'target_' in target_name:
+                                target_return = ((target_price - risk_mgmt['entry_price']) / risk_mgmt['entry_price']) * 100
+                                rr_ratio = risk_mgmt['risk_reward_ratios'].get(target_name, 0)
+                                
+                                st.metric(
+                                    f"{target_name.replace('_', ' ').title()}",
+                                    f"₹{target_price:.2f}",
+                                    f"+{target_return:.1f}% (R:R 1:{rr_ratio:.1f})"
+                                )
+                    
+                    # Risk/Reward Summary
+                    st.markdown("#### Risk/Reward Analysis")
+                    rr_df = pd.DataFrame([
+                        {
+                            'Target': target_name.replace('_', ' ').title(),
+                            'Price': f"₹{target_price:.2f}",
+                            'Return %': ((target_price - risk_mgmt['entry_price']) / risk_mgmt['entry_price']) * 100,
+                            'Risk/Reward': f"1:{rr_ratio:.1f}"
+                        }
+                        for target_name, target_price in risk_mgmt['profit_targets'].items()
+                        if 'target_' in target_name
+                        for rr_ratio in [risk_mgmt['risk_reward_ratios'].get(target_name, 0)]
+                    ])
+                    
+                    st.dataframe(rr_df, use_container_width=True, hide_index=True)
+                
+                # Market Context
+                if show_market:
+                    st.markdown('<div class="sub-header">🌐 Market Context Analysis</div>', unsafe_allow_html=True)
+                    
+                    market_context = analyzer.get_market_context()
+                    sector_analysis = analyzer.get_sector_analysis()
+                    
+                    market_cols = st.columns(3)
+                    
+                    with market_cols[0]:
+                        st.markdown("### Nifty 50")
+                        if market_context:
+                            st.metric("Nifty Level", f"₹{market_context['nifty_level']:.2f}")
+                            st.metric("Nifty Trend", market_context['nifty_trend'])
+                            st.metric("VIX Level", f"{market_context.get('vix', 'N/A'):.2f}" 
+                                     if market_context.get('vix') else 'N/A')
+                            st.metric("Market Condition", market_context.get('market_condition', 'N/A'))
+                    
+                    with market_cols[1]:
+                        st.markdown("### Sector Analysis")
+                        if sector_analysis:
+                            st.metric("Sector", sector_analysis['sector'])
+                            st.metric("Stock Return", f"{sector_analysis['stock_return']:.1f}%")
+                            st.metric("Sector Return", f"{sector_analysis['sector_return']:.1f}%")
+                            st.metric("Relative Strength", sector_analysis['relative_strength'])
+                    
+                    with market_cols[2]:
+                        st.markdown("### Risk Metrics")
+                        if sector_analysis:
+                            st.metric("Beta", f"{sector_analysis['beta']:.2f}")
+                            st.metric("Risk Category", sector_analysis['risk_category'])
+                        st.metric("Outperformance", f"{sector_analysis.get('outperformance', 0):.1f}%" 
+                                 if sector_analysis else 'N/A')
                 
                 # Advanced Technical Charts
                 if show_advanced:
@@ -1716,50 +2527,161 @@ def main():
                     with chart_tabs[1]:
                         fig_volume_profile = create_volume_profile_chart(analyzer)
                         st.plotly_chart(fig_volume_profile, use_container_width=True)
+                        
+                        # Volume Profile Metrics
+                        vp = analyzer.detect_volume_profile()
+                        if vp:
+                            vp_cols = st.columns(4)
+                            with vp_cols[0]:
+                                st.metric("Point of Control", f"₹{vp['poc_price']:.2f}")
+                            with vp_cols[1]:
+                                st.metric("Value Area High", f"₹{vp['value_area_high']:.2f}")
+                            with vp_cols[2]:
+                                st.metric("Value Area Low", f"₹{vp['value_area_low']:.2f}")
+                            with vp_cols[3]:
+                                st.metric("Value Area %", f"{vp['value_area_percentage']:.1f}%")
                     
                     with chart_tabs[2]:
-                        # Enhanced market structure with S/R
-                        st.info("Market structure analysis with support/resistance levels and key price zones.")
+                        # Create market structure analysis
+                        st.info("Market structure analysis shows support/resistance levels and key price zones.")
                         
-                        # Get S/R data
-                        sr_data = analyzer.detect_support_resistance()
+                        # Simple support/resistance levels
+                        df = analyzer.data.tail(100)
+                        support_levels = df['Low'].rolling(20).min().dropna().unique()[-3:]
+                        resistance_levels = df['High'].rolling(20).max().dropna().unique()[-3:]
                         
                         col1, col2 = st.columns(2)
                         with col1:
-                            st.markdown("#### 🟢 Key Support Levels")
-                            if sr_data['support']:
-                                for i, support in enumerate(sr_data['support'][:3], 1):
-                                    st.metric(
-                                        f"Support {i}",
-                                        f"₹{support['price']:.2f}",
-                                        f"{support['touches']} touches"
-                                    )
-                            else:
-                                st.info("No support levels")
+                            st.markdown("#### Key Support Levels")
+                            for i, level in enumerate(sorted(support_levels, reverse=True)[:3], 1):
+                                st.metric(f"Support {i}", f"₹{level:.2f}")
                         
                         with col2:
-                            st.markdown("#### 🔴 Key Resistance Levels")
-                            if sr_data['resistance']:
-                                for i, resistance in enumerate(sr_data['resistance'][:3], 1):
-                                    st.metric(
-                                        f"Resistance {i}",
-                                        f"₹{resistance['price']:.2f}",
-                                        f"{resistance['touches']} touches"
-                                    )
-                            else:
-                                st.info("No resistance levels")
+                            st.markdown("#### Key Resistance Levels")
+                            for i, level in enumerate(sorted(resistance_levels)[:3], 1):
+                                st.metric(f"Resistance {i}", f"₹{level:.2f}")
+                
+                # Technical Indicators Summary
+                st.markdown('<div class="sub-header">📋 Technical Indicators Summary</div>', unsafe_allow_html=True)
+                
+                current = analyzer.data.iloc[-1]
+                
+                indicators = {
+                    'Trend': [
+                        ('SMA 20', f"{current['SMA_20']:.2f}", 'Above' if current['Close'] > current['SMA_20'] else 'Below'),
+                        ('SMA 50', f"{current['SMA_50']:.2f}", 'Above' if current['Close'] > current['SMA_50'] else 'Below'),
+                        ('SMA 200', f"{current['SMA_200']:.2f}", 'Above' if current['Close'] > current['SMA_200'] else 'Below'),
+                        ('EMA Alignment', 'Bullish' if current['EMA_8'] > current['EMA_21'] > current['EMA_55'] else 'Bearish', '')
+                    ],
+                    'Momentum': [
+                        ('RSI 14', f"{current['RSI_14']:.1f}", 
+                         'Overbought' if current['RSI_14'] > 70 else 'Oversold' if current['RSI_14'] < 30 else 'Neutral'),
+                        ('MACD', f"{current['MACD']:.2f}", 
+                         'Bullish' if current['MACD'] > current['MACD_Signal'] else 'Bearish'),
+                        ('Stochastic %K', f"{current['Stoch_K']:.1f}", 
+                         'Overbought' if current['Stoch_K'] > 80 else 'Oversold' if current['Stoch_K'] < 20 else 'Neutral'),
+                        ('Williams %R', f"{current['Williams_%R']:.1f}", 
+                         'Oversold' if current['Williams_%R'] < -80 else 'Overbought' if current['Williams_%R'] > -20 else 'Neutral')
+                    ],
+                    'Volatility': [
+                        ('ATR %', f"{(current['ATR_14'] / current['Close']) * 100:.1f}%", 
+                         'High' if (current['ATR_14'] / current['Close']) > 0.03 else 'Low'),
+                        ('BB Position', f"{(current['Close'] - current['BB_Lower']) / (current['BB_Upper'] - current['BB_Lower']) * 100:.1f}%",
+                         'Upper Band' if current['Close'] > current['BB_Upper'] * 0.95 else 
+                         'Lower Band' if current['Close'] < current['BB_Lower'] * 1.05 else 'Middle'),
+                        ('Range %', f"{(df['High'].max() - df['Low'].min()) / df['Close'].mean() * 100:.1f}%", '')
+                    ],
+                    'Volume': [
+                        ('Volume Ratio', f"{current['Volume_Ratio']:.1f}x", 
+                         'High' if current['Volume_Ratio'] > 1.5 else 'Low'),
+                        ('OBV Trend', 'Up' if current['OBV'] > analyzer.data['OBV'].iloc[-20] else 'Down', ''),
+                        ('VWAP Diff', f"{(current['Close'] - current['VWAP']) / current['VWAP'] * 100:.1f}%",
+                         'Above' if current['Close'] > current['VWAP'] else 'Below')
+                    ]
+                }
+                
+                indicator_cols = st.columns(4)
+                for idx, (category, metrics) in enumerate(indicators.items()):
+                    with indicator_cols[idx]:
+                        st.markdown(f"#### {category}")
+                        for metric_name, value, interpretation in metrics:
+                            st.metric(metric_name, value, interpretation)
+                
+                # Export Functionality
+                st.markdown('<div class="sub-header">📤 Export Analysis</div>', unsafe_allow_html=True)
+                
+                col1, col2, col3 = st.columns(3)
+                
+                with col1:
+                    # Export to CSV
+                    csv_data = export_analysis_report(
+                        analyzer, 
+                        zanger_patterns + swing_patterns, 
+                        risk_mgmt, 
+                        (overall, signals, score)
+                    )
+                    
+                    st.download_button(
+                        label="📥 Download CSV Report",
+                        data=csv_data,
+                        file_name=f"{symbol}_analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                        mime="text/csv",
+                        use_container_width=True
+                    )
+                
+                with col2:
+                    # Generate summary
+                    if st.button("📋 Generate Summary", use_container_width=True):
+                        summary = f"""
+                        ## Analysis Summary for {symbol}
+                        
+                        **Trading Signal:** {overall} (Score: {score:.1f}/100)
+                        
+                        **Key Patterns Detected:**
+                        {', '.join([p['pattern'] for p in (zanger_patterns + swing_patterns)]) if (zanger_patterns + swing_patterns) else 'None'}
+                        
+                        **Risk Management:**
+                        - Entry: ₹{risk_mgmt['entry_price']:.2f}
+                        - Stop Loss: ₹{risk_mgmt['stop_loss']:.2f}
+                        - Position Size: {risk_mgmt['position_size']:,} shares
+                        - Max Risk: {risk_mgmt['portfolio_risk_percent']:.2f}% of portfolio
+                        
+                        **Technical Overview:**
+                        - Trend: {'Bullish' if current['Close'] > current['SMA_50'] else 'Bearish'}
+                        - Momentum: {'Bullish' if current['MACD'] > current['MACD_Signal'] else 'Bearish'}
+                        - Volume: {'Strong' if current['Volume'] > current['Volume_SMA_20'] * 1.5 else 'Weak'}
+                        
+                        Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+                        """
+                        
+                        st.success("Summary generated!")
+                        st.markdown(summary)
+                
+                with col3:
+                    # Clear cache
+                    if st.button("🗑️ Clear Cache", use_container_width=True):
+                        st.cache_data.clear()
+                        st.rerun()
                 
                 st.success(f"✅ Analysis completed for {symbol} at {datetime.now().strftime('%H:%M:%S')}")
                 
             else:
                 st.error(f"❌ Unable to fetch data for {symbol}.")
+                st.info("💡 Tips:")
+                st.markdown("""
+                1. Check if the stock symbol is correct
+                2. Try adding .NS suffix for NSE stocks (e.g., RELIANCE.NS)
+                3. Try adding .BO suffix for BSE stocks (e.g., RELIANCE.BO)
+                4. Ensure you have an active internet connection
+                5. Try a different analysis period
+                """)
     
     else:
         # Welcome screen
         st.markdown("""
         <div style="text-align: center; padding: 40px 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 15px; color: white;">
             <h1>Welcome to Indian Equity Market Analyzer Pro</h1>
-            <p style="font-size: 18px;">Advanced technical analysis with Support/Resistance Detection</p>
+            <p style="font-size: 18px;">Advanced technical analysis tool based on master trader strategies</p>
         </div>
         """, unsafe_allow_html=True)
         
@@ -1768,13 +2690,12 @@ def main():
         with col1:
             st.markdown("""
             <div class="metric-card">
-                <h3>🎯 Support & Resistance</h3>
-                <p>Advanced S/R detection with multiple methods</p>
+                <h3>🎯 Dan Zanger Strategies</h3>
+                <p>Pattern-based trading with volume confirmation</p>
                 <ul>
-                    <li>Automatic Level Detection</li>
-                    <li>Trend Line Analysis</li>
-                    <li>Fibonacci Retracement</li>
-                    <li>Consolidation Zones</li>
+                    <li>Cup and Handle</li>
+                    <li>High Tight Flag</li>
+                    <li>8% Stop Loss Rule</li>
                 </ul>
             </div>
             """, unsafe_allow_html=True)
@@ -1782,13 +2703,12 @@ def main():
         with col2:
             st.markdown("""
             <div class="metric-card">
-                <h3>📈 Pattern Detection</h3>
-                <p>Comprehensive pattern recognition</p>
+                <h3>📈 Qullamaggie Swing Trading</h3>
+                <p>Momentum-based swing trading strategies</p>
                 <ul>
-                    <li>Dan Zanger Patterns</li>
-                    <li>Qullamaggie Swing Trading</li>
-                    <li>Support/Resistance Patterns</li>
-                    <li>Volume Analysis</li>
+                    <li>Episodic Pivots</li>
+                    <li>Breakout Patterns</li>
+                    <li>1% Risk Management</li>
                 </ul>
             </div>
             """, unsafe_allow_html=True)
@@ -1796,16 +2716,47 @@ def main():
         with col3:
             st.markdown("""
             <div class="metric-card">
-                <h3>📊 Risk Management</h3>
-                <p>Professional trading tools</p>
+                <h3>📊 Advanced Analytics</h3>
+                <p>Comprehensive market analysis tools</p>
                 <ul>
-                    <li>Position Sizing</li>
-                    <li>Stop Loss Calculation</li>
-                    <li>Risk/Reward Analysis</li>
-                    <li>Portfolio Risk Management</li>
+                    <li>Volume Profile</li>
+                    <li>Risk Management</li>
+                    <li>Sector Analysis</li>
                 </ul>
             </div>
             """, unsafe_allow_html=True)
+        
+        # Quick start examples
+        st.markdown("### 🚀 Quick Start Examples")
+        
+        example_cols = st.columns(4)
+        examples = [
+            ("RELIANCE", "Energy Giant"),
+            ("TCS", "IT Services"),
+            ("HDFCBANK", "Banking Leader"),
+            ("INFY", "IT Major")
+        ]
+        
+        for i, (ex_symbol, ex_desc) in enumerate(examples):
+            with example_cols[i]:
+                if st.button(f"Analyze {ex_symbol}", use_container_width=True):
+                    st.session_state.symbol = ex_symbol
+                    st.rerun()
+        
+        # Features list
+        st.markdown("### ✨ Key Features")
+        
+        features = [
+            ("Pattern Detection", "Automated detection of 10+ trading patterns"),
+            ("Risk Management", "Advanced position sizing and stop loss calculation"),
+            ("Volume Analysis", "Volume profile and institutional flow analysis"),
+            ("Market Context", "Sector and broader market analysis"),
+            ("Real-time Data", "Live market data with caching"),
+            ("Export Reports", "Generate and download analysis reports")
+        ]
+        
+        for feature, description in features:
+            st.markdown(f"✅ **{feature}**: {description}")
 
 if __name__ == "__main__":
     main()
