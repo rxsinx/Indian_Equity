@@ -2406,7 +2406,7 @@ with signal_cols[0]:
                     
                 with pattern_tabs[2]:
                     all_patterns = zanger_patterns + swing_patterns
-                        if all_patterns:
+                    if all_patterns:
                             # Create pattern summary table
                             pattern_df = pd.DataFrame([{
                                 'Pattern': p['pattern'],
