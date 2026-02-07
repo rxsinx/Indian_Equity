@@ -1640,7 +1640,7 @@ class IndianEquityAnalyzer:
 
 def create_candlestick_chart(analyzer):
     """Create advanced candlestick chart with multiple indicators"""
-    df = analyzer.data.tail(100)
+    df = analyzer.data.tail(200)
     
     # Create subplots
     fig = make_subplots(
