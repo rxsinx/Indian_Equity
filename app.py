@@ -1660,8 +1660,8 @@ def create_candlestick_chart(analyzer):
             low=df['Low'],
             close=df['Close'],
             name='OHLC',
-            increasing_line_color='#26a69a',
-            decreasing_line_color='#ef5350'
+            increasing_line_color='#17e817',
+            decreasing_line_color='#f55433'
         ),
         row=1, col=1
     )
