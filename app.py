@@ -482,7 +482,6 @@ class IndianEquityAnalyzer:
                 ]
             })
         
-        return patterns
         # ========== NEW PATTERNS ==========
         
         # 7. Head and Shoulders (Bearish Reversal)
@@ -751,8 +750,7 @@ class IndianEquityAnalyzer:
                 ]
             })
         
-        return patterns
-    
+           
     def detect_cup_and_handle_enhanced(self, df):
         """Enhanced Cup and Handle detection with scoring"""
         if len(df) < 60:
@@ -1216,8 +1214,7 @@ class IndianEquityAnalyzer:
                             score += 0.2
         
         return score
-
-    # ============================================================================
+# ============================================================================
 # ADDITIONAL PATTERN DETECTION METHODS
 # Add these methods to the IndianEquityAnalyzer class (after existing patterns)
 # ============================================================================
