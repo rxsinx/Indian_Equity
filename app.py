@@ -214,6 +214,7 @@ class IndianEquityAnalyzer:
         df['EMA_21'] = ta.trend.ema_indicator(df['Close'], window=21)
         df['EMA_34'] = ta.trend.ema_indicator(df['Close'], window=34)
         df['EMA_55'] = ta.trend.ema_indicator(df['Close'], window=55)
+        df['EMA_70'] = ta.trend.ema_indicator(df['Close'], window=70)
         
         # MACD with multiple configurations
         macd_fast = ta.trend.MACD(df['Close'], window_fast=12, window_slow=26, window_sign=9)
@@ -1674,11 +1675,10 @@ def create_candlestick_chart(analyzer):
                             line=dict(color='red', width=2)), row=1, col=1)
     
     # Exponential Moving Averages
-    fig.add_trace(go.Scatter(x=df.index, y=df['EMA_8'], name='EMA 8', 
-                            line=dict(color='purple', width=1, dash='dash')), row=1, col=1)
+    
     fig.add_trace(go.Scatter(x=df.index, y=df['EMA_21'], name='EMA 21', 
                             line=dict(color='green', width=1, dash='dash')), row=1, col=1)
-    fig.add_trace(go.Scatter(x=df.index, y=df['EMA_55'], name='EMA 55', 
+    fig.add_trace(go.Scatter(x=df.index, y=df['EMA_70'], name='EMA 70', 
                             line=dict(color='brown', width=1, dash='dash')), row=1, col=1)
     
     # Bollinger Bands
