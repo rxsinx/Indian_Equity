@@ -2326,8 +2326,8 @@ except Exception as e:
     st.error(f"Could not fetch analyst forecasts: {str(e)}")
     st.info("Try analyzing a large-cap stock like RELIANCE, TCS, or HDFCBANK for comprehensive analyst data.")
                 
-                # Trading Signal
-                st.markdown('<div class="sub-header">🎯 Trading Signal & Analysis</div>', unsafe_allow_html=True)
+# Trading Signal
+st.markdown('<div class="sub-header">🎯 Trading Signal & Analysis</div>', unsafe_allow_html=True)
                 
                 overall, signals, score, color = analyzer.get_trading_signal()
                 
