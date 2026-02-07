@@ -2326,58 +2326,60 @@ except Exception as e:
     st.error(f"Could not fetch analyst forecasts: {str(e)}")
     st.info("Try analyzing a large-cap stock like RELIANCE, TCS, or HDFCBANK for comprehensive analyst data.")
                 
+            
+                
 # Trading Signal
 st.markdown('<div class="sub-header">🎯 Trading Signal & Analysis</div>', unsafe_allow_html=True)
                 
 overall, signals, score, color = analyzer.get_trading_signal()
-                
+
 signal_cols = st.columns([1, 2])
 with signal_cols[0]:
     st.markdown(f"""
     <div style="background-color: {color}; padding: 20px; border-radius: 10px; text-align: center;">
-        <h2 style="margin: 0; color: white;">{overall}</h2>
-        <p style="margin: 5px 0; font-size: 18px; color: white;">Score: {score:.1f}/100</p>
+         <h2 style="margin: 0; color: white;">{overall}</h2>
+         <p style="margin: 5px 0; font-size: 18px; color: white;">Score: {score:.1f}/100</p>
     </div>
     """, unsafe_allow_html=True)
+    
+    # Gauge chart for signal strength
+    fig_gauge = go.Figure(go.Indicator(
+        mode="gauge+number",
+        value=score,
+        domain={'x': [0, 1], 'y': [0, 1]},
+        title={'text': "Signal Strength"},
+        gauge={
+            'axis': {'range': [-50, 100]},
+            'bar': {'color': "blue"},
+            'steps': [
+                {'range': [-50, 0], 'color': "red"},
+                {'range': [0, 50], 'color': "yellow"},
+                {'range': [50, 100], 'color': "green"}
+            ],
+            'threshold': {
+                'line': {'color': "black", 'width': 4},
+                    'thickness': 0.75,
+                    'value': 50
+            }
+        }
+    ))
                     
-                    # Gauge chart for signal strength
-                    fig_gauge = go.Figure(go.Indicator(
-                        mode="gauge+number",
-                        value=score,
-                        domain={'x': [0, 1], 'y': [0, 1]},
-                        title={'text': "Signal Strength"},
-                        gauge={
-                            'axis': {'range': [-50, 100]},
-                            'bar': {'color': "blue"},
-                            'steps': [
-                                {'range': [-50, 0], 'color': "red"},
-                                {'range': [0, 50], 'color': "yellow"},
-                                {'range': [50, 100], 'color': "green"}
-                            ],
-                            'threshold': {
-                                'line': {'color': "black", 'width': 4},
-                                'thickness': 0.75,
-                                'value': 50
-                            }
-                        }
-                    ))
-                    
-                    fig_gauge.update_layout(height=200, margin=dict(t=30, b=10))
-                    st.plotly_chart(fig_gauge, use_container_width=True)
+    fig_gauge.update_layout(height=200, margin=dict(t=30, b=10))
+    st.plotly_chart(fig_gauge, use_container_width=True)
                 
-                with signal_cols[1]:
-                    with st.expander("📋 Detailed Analysis Signals", expanded=True):
-                        for signal in signals:
-                            st.markdown(f"• {signal}")
+    with signal_cols[1]:
+        with st.expander("📋 Detailed Analysis Signals", expanded=True):
+            for signal in signals:
+                st.markdown(f"• {signal}")
                 
-                # Pattern Detection
-                if show_patterns:
-                    st.markdown('<div class="sub-header">📈 Pattern Detection</div>', unsafe_allow_html=True)
+    # Pattern Detection
+            if show_patterns:
+                st.markdown('<div class="sub-header">📈 Pattern Detection</div>', unsafe_allow_html=True)
                     
-                    pattern_tabs = st.tabs(["Dan Zanger Patterns", "Qullamaggie Patterns", "All Patterns"])
+                pattern_tabs = st.tabs(["Dan Zanger Patterns", "Qullamaggie Patterns", "All Patterns"])
                     
-                    with pattern_tabs[0]:
-                        zanger_patterns = analyzer.detect_chart_patterns()
+                with pattern_tabs[0]:
+                    zanger_patterns = analyzer.detect_chart_patterns()
                         if zanger_patterns:
                             for pattern in zanger_patterns:
                                 st.markdown(create_pattern_summary_card(pattern), unsafe_allow_html=True)
@@ -2388,8 +2390,8 @@ with signal_cols[0]:
                         else:
                             st.info("No Dan Zanger patterns detected in current timeframe.")
                     
-                    with pattern_tabs[1]:
-                        swing_patterns = analyzer.detect_swing_patterns()
+                with pattern_tabs[1]:
+                    swing_patterns = analyzer.detect_swing_patterns()
                         if swing_patterns:
                             for pattern in swing_patterns:
                                 st.markdown(create_pattern_summary_card(pattern), unsafe_allow_html=True)
@@ -2400,8 +2402,8 @@ with signal_cols[0]:
                         else:
                             st.info("No Qullamaggie swing patterns detected in current timeframe.")
                     
-                    with pattern_tabs[2]:
-                        all_patterns = zanger_patterns + swing_patterns
+                with pattern_tabs[2]:
+                    all_patterns = zanger_patterns + swing_patterns
                         if all_patterns:
                             # Create pattern summary table
                             pattern_df = pd.DataFrame([{
