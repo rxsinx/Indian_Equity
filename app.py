@@ -750,7 +750,7 @@ class IndianEquityAnalyzer:
                 ]
             })
         
-           
+       return patterns    
     def detect_cup_and_handle_enhanced(self, df):
         """Enhanced Cup and Handle detection with scoring"""
         if len(df) < 60:
